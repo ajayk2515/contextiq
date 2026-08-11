@@ -2,7 +2,7 @@
 
 Enterprise Knowledge Intelligence Platform (EKIP) is a full-stack AI/RAG MVP. The application is being built phase by phase according to [`PROJECT_SPEC.md`](PROJECT_SPEC.md).
 
-Phase 0 provides the local Vue, FastAPI, PostgreSQL, and Qdrant foundation. Authentication, document ingestion, and RAG behavior are intentionally not included yet.
+The current implementation provides the local Vue, FastAPI, PostgreSQL, and Qdrant foundation plus email/password authentication for the four demo roles. Document ingestion and RAG behavior are intentionally not included yet.
 
 ## Prerequisites
 
@@ -42,6 +42,7 @@ python -m venv .venv
 python -m pip install --upgrade pip
 python -m pip install -r requirements-dev.txt
 python -m alembic upgrade head
+python -m scripts.seed_demo
 python -m uvicorn app.main:app --reload
 ```
 
@@ -72,6 +73,33 @@ npm run dev
 
 The application is available at `http://localhost:5173`.
 
+## Demo Authentication
+
+The seed command is idempotent and creates or refreshes these local accounts:
+
+| Email | Role |
+| --- | --- |
+| `developer@demo.com` | Developer |
+| `hr@demo.com` | HR |
+| `finance@demo.com` | Finance |
+| `executive@demo.com` | Executive |
+
+All demo users receive the password configured in `DEMO_USER_PASSWORD`. The checked-in example uses `ekip_demo_password` for local development only. Never reuse that value outside a local demo environment.
+
+Authentication uses a signed JWT access token. The browser stores the token in `sessionStorage`, so it survives a normal page refresh but is removed when the user signs out or the browser session ends. Configure `JWT_SECRET` with a unique value of at least 32 characters.
+
+Verify authentication from PowerShell:
+
+```powershell
+$login = Invoke-RestMethod -Method Post `
+  -Uri http://localhost:8000/api/auth/login `
+  -ContentType 'application/json' `
+  -Body '{"email":"developer@demo.com","password":"ekip_demo_password"}'
+
+Invoke-RestMethod -Uri http://localhost:8000/api/auth/me `
+  -Headers @{ Authorization = "Bearer $($login.access_token)" }
+```
+
 Run frontend checks:
 
 ```powershell
@@ -100,4 +128,3 @@ docker compose down
 ```
 
 Named Docker volumes preserve local PostgreSQL and Qdrant data. Use `docker compose down --volumes` only when intentionally resetting local data.
-

@@ -1,7 +1,7 @@
 from functools import lru_cache
-from typing import Annotated
+from typing import Annotated, Literal
 
-from pydantic import Field, field_validator
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
@@ -18,6 +18,11 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://ekip:ekip_local_password@localhost:5432/ekip"
     qdrant_url: str = "http://localhost:6333"
     qdrant_api_key: str | None = None
+    jwt_secret: SecretStr
+    jwt_algorithm: Literal["HS256", "HS384", "HS512"] = "HS256"
+    jwt_expiration_minutes: int = Field(default=60, gt=0, le=1440)
+    jwt_issuer: str = "ekip"
+    demo_user_password: SecretStr | None = None
     cors_origins: Annotated[list[str], NoDecode] = Field(
         default_factory=lambda: ["http://localhost:5173"]
     )
@@ -36,7 +41,14 @@ class Settings(BaseSettings):
             raise ValueError("DATABASE_URL must use the postgresql+asyncpg driver")
         return value
 
+    @field_validator("jwt_secret")
+    @classmethod
+    def require_strong_jwt_secret(cls, value: SecretStr) -> SecretStr:
+        if len(value.get_secret_value()) < 32:
+            raise ValueError("JWT_SECRET must contain at least 32 characters")
+        return value
+
 
 @lru_cache
 def get_settings() -> Settings:
-    return Settings()
+    return Settings()  # type: ignore[call-arg]
