@@ -2,6 +2,13 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from app.query_intelligence.domain import (
+    ExecutedRetrievalStrategy,
+    IntendedRetrievalStrategy,
+    QueryCategory,
+    RetrievalProfile,
+)
+
 
 class ChatRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -26,7 +33,18 @@ class ChatSource(BaseModel):
     snippet: str
 
 
+class QueryIntelligenceMetadata(BaseModel):
+    query_id: UUID
+    category: QueryCategory
+    profile: RetrievalProfile
+    intended_strategy: IntendedRetrievalStrategy
+    executed_strategy: ExecutedRetrievalStrategy
+    candidate_top_k: int
+    classification_fallback: bool
+
+
 class ChatResponse(BaseModel):
     answer: str
     sources: list[ChatSource]
     insufficient_context: bool
+    query_intelligence: QueryIntelligenceMetadata

@@ -10,7 +10,25 @@ from app.auth.models import User
 from app.auth.security import create_access_token
 from app.database import get_session
 from app.main import app
-from app.rag.schemas import ChatResponse
+from app.query_intelligence.domain import (
+    ExecutedRetrievalStrategy,
+    IntendedRetrievalStrategy,
+    QueryCategory,
+    RetrievalProfile,
+)
+from app.rag.schemas import ChatResponse, QueryIntelligenceMetadata
+
+
+def query_metadata() -> QueryIntelligenceMetadata:
+    return QueryIntelligenceMetadata(
+        query_id=uuid4(),
+        category=QueryCategory.FAQ,
+        profile=RetrievalProfile.FAST,
+        intended_strategy=IntendedRetrievalStrategy.DENSE,
+        executed_strategy=ExecutedRetrievalStrategy.DENSE,
+        candidate_top_k=3,
+        classification_fallback=False,
+    )
 
 
 async def test_chat_rejects_missing_authentication_and_invalid_message() -> None:
@@ -61,6 +79,7 @@ async def test_chat_uses_role_from_authenticated_server_identity() -> None:
             answer="Grounded answer",
             sources=[],
             insufficient_context=False,
+            query_intelligence=query_metadata(),
         )
     )
     service.close = AsyncMock()
@@ -75,7 +94,7 @@ async def test_chat_uses_role_from_authenticated_server_identity() -> None:
         app.dependency_overrides.clear()
 
     assert response.status_code == 200
-    service.answer.assert_awaited_once_with("What is the policy?", "HR")
+    service.answer.assert_awaited_once_with("What is the policy?", current_user.id, "HR")
     service.close.assert_awaited_once()
 
 
@@ -96,6 +115,7 @@ async def test_chat_uses_current_database_role_instead_of_stale_jwt_role() -> No
             answer="Grounded answer",
             sources=[],
             insufficient_context=False,
+            query_intelligence=query_metadata(),
         )
     )
     service.close = AsyncMock()
@@ -114,4 +134,4 @@ async def test_chat_uses_current_database_role_instead_of_stale_jwt_role() -> No
         app.dependency_overrides.clear()
 
     assert response.status_code == 200
-    service.answer.assert_awaited_once_with("What is the policy?", "HR")
+    service.answer.assert_awaited_once_with("What is the policy?", current_user.id, "HR")

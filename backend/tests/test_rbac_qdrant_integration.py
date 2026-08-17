@@ -8,6 +8,7 @@ from app.config import Settings
 from app.ingestion.embeddings import SparseEmbedding
 from app.ingestion.parser import ParsedChunk
 from app.ingestion.vector_index import DocumentVectorIndex, IndexedChunk
+from app.query_intelligence.domain import QueryCategory, QueryDecision, RetrievalProfile
 from app.rag.retrieval import DenseRetriever
 from app.rag.service import RagService
 
@@ -18,7 +19,6 @@ def settings(collection: str) -> Settings:
         openai_api_key=None,
         openai_embedding_dimensions=2,
         qdrant_documents_collection=collection,
-        rag_top_k=10,
         rag_score_threshold=-1,
     )
 
@@ -82,7 +82,7 @@ async def test_qdrant_role_filter_enforces_single_multi_and_cross_role_access() 
         }
 
         for role, filenames in expected.items():
-            chunks = await retriever.search([1.0, 0.0], role)
+            chunks = await retriever.search([1.0, 0.0], role, 10)
             assert {chunk.filename for chunk in chunks} == filenames
     finally:
         await client.close()
@@ -118,8 +118,8 @@ async def test_same_topic_restricted_chunk_cannot_enter_context_or_citations() -
         configured = settings(collection)
         retriever = DenseRetriever(configured, client)
 
-        developer_chunks = await retriever.search([1.0, 0.0], "Developer")
-        hr_chunks = await retriever.search([1.0, 0.0], "HR")
+        developer_chunks = await retriever.search([1.0, 0.0], "Developer", 10)
+        hr_chunks = await retriever.search([1.0, 0.0], "HR", 10)
 
         assert [chunk.chunk_id for chunk in developer_chunks] == [developer_id]
         assert [chunk.chunk_id for chunk in hr_chunks] == [hr_id]
@@ -128,8 +128,24 @@ async def test_same_topic_restricted_chunk_cannot_enter_context_or_citations() -
         generator = SimpleNamespace(
             generate=AsyncMock(return_value="The standard retention bonus is 5%.")
         )
-        service = RagService(configured, embedding, retriever, generator)
-        response = await service.answer("What is the retention bonus?", "Developer")
+        classifier = SimpleNamespace(
+            classify=AsyncMock(
+                return_value=QueryDecision(
+                    category=QueryCategory.FAQ,
+                    profile=RetrievalProfile.FAST,
+                )
+            )
+        )
+        query_log_writer = SimpleNamespace(record=AsyncMock(return_value=uuid4()))
+        service = RagService(
+            configured,
+            embedding,
+            retriever,
+            generator,
+            classifier,
+            query_log_writer,
+        )
+        response = await service.answer("What is the retention bonus?", uuid4(), "Developer")
         context = generator.generate.await_args.args[1]
 
         assert "5%" in context
@@ -137,6 +153,56 @@ async def test_same_topic_restricted_chunk_cannot_enter_context_or_citations() -
         assert [source.chunk_id for source in response.sources] == [developer_id]
         assert all(source.filename != "hr-retention.md" for source in response.sources)
         assert "17%" not in response.answer
+    finally:
+        await client.close()
+
+
+async def test_retrieval_profiles_never_bypass_qdrant_role_filter() -> None:
+    collection = "rbac_all_profiles"
+    client = AsyncQdrantClient(location=":memory:")
+    restricted_id = uuid4()
+    profiles = [
+        (QueryCategory.FAQ, RetrievalProfile.FAST),
+        (QueryCategory.RESTRICTED_DATA, RetrievalProfile.BALANCED),
+        (QueryCategory.MULTI_DOC_COMPARISON, RetrievalProfile.ACCURATE),
+    ]
+    try:
+        await create_collection(client, collection)
+        await client.upsert(
+            collection_name=collection,
+            points=[
+                point(
+                    restricted_id,
+                    "hr-confidential.md",
+                    ["HR"],
+                    text="The confidential retention bonus is 17%.",
+                )
+            ],
+            wait=True,
+        )
+        configured = settings(collection)
+
+        for category, profile in profiles:
+            retriever = DenseRetriever(configured, client)
+            service = RagService(
+                configured,
+                SimpleNamespace(dense=AsyncMock(return_value=[[1.0, 0.0]])),
+                retriever,
+                SimpleNamespace(generate=AsyncMock(return_value="The bonus is 17%.")),
+                SimpleNamespace(
+                    classify=AsyncMock(
+                        return_value=QueryDecision(category=category, profile=profile)
+                    )
+                ),
+                SimpleNamespace(record=AsyncMock(return_value=uuid4())),
+            )
+
+            developer_response = await service.answer("What is the bonus?", uuid4(), "Developer")
+            hr_response = await service.answer("What is the bonus?", uuid4(), "HR")
+
+            assert developer_response.insufficient_context is True
+            assert developer_response.sources == []
+            assert [source.chunk_id for source in hr_response.sources] == [restricted_id]
     finally:
         await client.close()
 
@@ -172,7 +238,7 @@ async def test_missing_empty_and_malformed_role_metadata_fail_closed() -> None:
             limit=10,
             with_payload=True,
         )
-        chunks = await retriever.search([1.0, 0.0], "HR")
+        chunks = await retriever.search([1.0, 0.0], "HR", 10)
 
         assert {(point.payload or {}).get("filename") for point in raw_response.points} == {
             "valid.md",
@@ -216,12 +282,12 @@ async def test_deleted_document_vectors_are_not_retrievable() -> None:
             ],
         )
 
-        assert len(await retriever.search([1.0, 0.0], "HR")) == 2
-        assert len(await retriever.search([1.0, 0.0], "Executive")) == 2
+        assert len(await retriever.search([1.0, 0.0], "HR", 10)) == 2
+        assert len(await retriever.search([1.0, 0.0], "Executive", 10)) == 2
 
         await index.delete_document(document_id)
 
-        assert await retriever.search([1.0, 0.0], "HR") == []
-        assert await retriever.search([1.0, 0.0], "Executive") == []
+        assert await retriever.search([1.0, 0.0], "HR", 10) == []
+        assert await retriever.search([1.0, 0.0], "Executive", 10) == []
     finally:
         await client.close()

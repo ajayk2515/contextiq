@@ -2,7 +2,7 @@
 
 Enterprise Knowledge Intelligence Platform (EKIP) is a full-stack AI/RAG MVP. The application is being built phase by phase according to [`PROJECT_SPEC.md`](PROJECT_SPEC.md).
 
-The current implementation provides the local Vue, FastAPI, PostgreSQL, and Qdrant foundation, email/password authentication for the four demo roles, role-aware document ingestion, and grounded dense-retrieval question answering with citations.
+The current implementation provides the local Vue, FastAPI, PostgreSQL, and Qdrant foundation, email/password authentication for the four demo roles, role-aware document ingestion, and grounded question answering with citations and adaptive query routing.
 
 ## Prerequisites
 
@@ -20,7 +20,7 @@ Copy-Item .env.example .env
 
 The defaults are intended only for local development. Change credentials and service URLs through environment variables rather than editing application code.
 
-Document ingestion and chat require `OPENAI_API_KEY`. Upload limits, chunk size and overlap, embedding and chat models, retrieval Top-K and score threshold, context size, answer size, and the Qdrant collection name are configurable in `.env`.
+Document ingestion and chat require `OPENAI_API_KEY`. Upload limits, chunk size and overlap, embedding and chat models, retrieval score threshold, context size, answer size, and the Qdrant collection name are configurable in `.env`. Retrieval Top-K values are centralized in the FAST, BALANCED, and ACCURATE profile definitions.
 
 ## Local Infrastructure
 
@@ -79,7 +79,9 @@ The application is available at `http://localhost:5173`.
 
 After signing in, open `http://localhost:5173/documents` to upload a PDF, DOCX, PPTX, or Markdown file and assign its allowed roles. Documents move from `PROCESSING` to `READY` after Docling parsing, dense and sparse embedding, and Qdrant indexing. Failed processing stores a visible error message.
 
-Open `http://localhost:5173/chat` to ask a question against indexed documents available to the authenticated role. Phase 3 uses dense retrieval only. The user's server-resolved role is applied as a Qdrant payload filter before similarity search, and answers include citations derived from the chunks supplied as bounded context.
+Open `http://localhost:5173/chat` to ask a question against indexed documents available to the authenticated role. Query Intelligence classifies the question as FAQ, specific search, multi-document comparison, summarization, or restricted data, then selects the centralized FAST, BALANCED, or ACCURATE retrieval profile. FAST executes dense Top-K 3; BALANCED and ACCURATE currently execute truthful dense fallbacks with Top-K 8 and 15 until hybrid retrieval and reranking are implemented in later phases. The user's server-resolved role is always applied as a Qdrant payload filter before similarity search. Responses include the selected routing metadata and citations derived from the chunks supplied as bounded context.
+
+Each chat request records its authenticated user, query, classification, selected profile, actual execution strategy, fallback status, and retrieval latency in PostgreSQL. Apply the latest Alembic migration before using Phase 5 chat behavior.
 
 ## Demo Authentication
 

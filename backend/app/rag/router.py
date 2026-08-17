@@ -12,6 +12,6 @@ router = APIRouter(prefix="/api/chat", tags=["chat"])
 async def chat(request: ChatRequest, current_user: CurrentUser) -> ChatResponse:
     service = RagService(get_settings())
     try:
-        return await service.answer(request.message, current_user.role)
+        return await service.answer(request.message, current_user.id, current_user.role)
     finally:
         await service.close()

@@ -13,7 +13,6 @@ def settings() -> Settings:
         jwt_secret="unit-test-jwt-secret-with-at-least-thirty-two-characters",
         openai_api_key=None,
         openai_embedding_dimensions=2,
-        rag_top_k=3,
         rag_score_threshold=0.35,
     )
 
@@ -41,7 +40,7 @@ async def test_dense_retrieval_applies_role_filter_inside_qdrant_query() -> None
     )
     retriever = DenseRetriever(settings(), client)
 
-    chunks = await retriever.search([0.1, 0.2], "HR")
+    chunks = await retriever.search([0.1, 0.2], "HR", 3)
 
     call = client.query_points.await_args.kwargs
     condition = call["query_filter"].must[0]
@@ -78,7 +77,7 @@ async def test_dense_retrieval_fails_closed_for_malformed_permission_payloads() 
     )
     retriever = DenseRetriever(settings(), client)
 
-    assert await retriever.search([0.1, 0.2], "HR") == []
+    assert await retriever.search([0.1, 0.2], "HR", 3) == []
 
 
 async def test_dense_retrieval_returns_empty_when_collection_does_not_exist() -> None:
@@ -86,7 +85,7 @@ async def test_dense_retrieval_returns_empty_when_collection_does_not_exist() ->
     client.collection_exists.return_value = False
     retriever = DenseRetriever(settings(), client)
 
-    assert await retriever.search([0.1, 0.2], "Developer") == []
+    assert await retriever.search([0.1, 0.2], "Developer", 3) == []
     client.query_points.assert_not_awaited()
 
 

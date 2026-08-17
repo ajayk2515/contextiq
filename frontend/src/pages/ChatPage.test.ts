@@ -34,6 +34,15 @@ describe('ChatPage', () => {
     vi.mocked(askQuestion).mockResolvedValue({
       answer: 'Employees receive twenty days of annual leave.',
       insufficient_context: false,
+      query_intelligence: {
+        query_id: 'e8789c91-e6bd-42a8-9dfb-326955bad3ee',
+        category: 'FAQ',
+        profile: 'FAST',
+        intended_strategy: 'DENSE',
+        executed_strategy: 'DENSE',
+        candidate_top_k: 3,
+        classification_fallback: false,
+      },
       sources: [
         {
           document_id: '2418ac1e-d459-4a62-b3a7-a9228120a6bb',
@@ -54,6 +63,9 @@ describe('ChatPage', () => {
     expect(askQuestion).toHaveBeenCalledWith('signed-token', 'How much annual leave is provided?')
     expect(wrapper.text()).toContain('Employees receive twenty days of annual leave.')
     expect(wrapper.text()).toContain('[1] handbook.md \u00b7 Annual Leave')
+    expect(wrapper.get('[aria-label="Query routing"]').text()).toContain(
+      'FAQ · FAST · Dense · Top 3',
+    )
   })
 
   it('shows the loading and insufficient-context states', async () => {
@@ -73,6 +85,15 @@ describe('ChatPage', () => {
       answer: "I couldn't find enough information.",
       sources: [],
       insufficient_context: true,
+      query_intelligence: {
+        query_id: '3cd386aa-870e-44f3-99a3-86808a31016a',
+        category: 'SPECIFIC_SEARCH',
+        profile: 'BALANCED',
+        intended_strategy: 'HYBRID',
+        executed_strategy: 'DENSE_FALLBACK',
+        candidate_top_k: 8,
+        classification_fallback: true,
+      },
     })
     await flushPromises()
 

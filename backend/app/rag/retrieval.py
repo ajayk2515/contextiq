@@ -44,7 +44,9 @@ class DenseRetriever:
             ]
         )
 
-    async def search(self, query_vector: list[float], role: str) -> list[RetrievedChunk]:
+    async def search(
+        self, query_vector: list[float], role: str, top_k: int
+    ) -> list[RetrievedChunk]:
         collection = self.settings.qdrant_documents_collection
         if not await self.client.collection_exists(collection):
             return []
@@ -54,7 +56,7 @@ class DenseRetriever:
             query=query_vector,
             using="dense",
             query_filter=self.role_filter(role),
-            limit=self.settings.rag_top_k,
+            limit=top_k,
             score_threshold=self.settings.rag_score_threshold,
             with_payload=True,
             with_vectors=False,

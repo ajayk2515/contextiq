@@ -20,6 +20,18 @@ function sourceLabel(source: ChatSource) {
   return parts.join(' \u00b7 ')
 }
 
+function routingLabel(value: string) {
+  return value
+    .toLowerCase()
+    .split('_')
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ')
+}
+
+function categoryLabel(value: string) {
+  return value === 'FAQ' ? value : routingLabel(value)
+}
+
 async function submitQuestion() {
   const question = message.value.trim()
   if (!auth.token || !question || loading.value) return
@@ -98,6 +110,12 @@ async function submitQuestion() {
               Insufficient context
             </span>
           </div>
+          <p class="mt-2 text-xs text-muted" aria-label="Query routing">
+            {{ categoryLabel(response.query_intelligence.category) }}
+            · {{ response.query_intelligence.profile }} ·
+            {{ routingLabel(response.query_intelligence.executed_strategy) }} · Top
+            {{ response.query_intelligence.candidate_top_k }}
+          </p>
           <p class="mt-3 whitespace-pre-wrap text-sm leading-7">{{ response.answer }}</p>
         </div>
 
