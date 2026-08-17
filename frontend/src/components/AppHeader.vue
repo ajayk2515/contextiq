@@ -32,6 +32,7 @@ async function signOut() {
         class="order-3 flex h-11 w-full items-end gap-6 sm:order-2 sm:h-16 sm:w-auto"
       >
         <RouterLink class="nav-link" :to="{ name: 'foundation' }">Status</RouterLink>
+        <RouterLink class="nav-link" :to="{ name: 'chat' }">Chat</RouterLink>
         <RouterLink class="nav-link" :to="{ name: 'documents' }">Documents</RouterLink>
       </nav>
 

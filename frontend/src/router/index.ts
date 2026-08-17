@@ -1,6 +1,7 @@
 import type { Pinia } from 'pinia'
 import { createRouter, createWebHistory, type RouterHistory, type RouteRecordRaw } from 'vue-router'
 
+import ChatPage from '@/pages/ChatPage.vue'
 import FoundationPage from '@/pages/FoundationPage.vue'
 import DocumentsPage from '@/pages/DocumentsPage.vue'
 import LoginPage from '@/pages/LoginPage.vue'
@@ -18,6 +19,12 @@ const routes: RouteRecordRaw[] = [
     path: '/',
     name: 'foundation',
     component: FoundationPage,
+    meta: { requiresAuth: true },
+  },
+  {
+    path: '/chat',
+    name: 'chat',
+    component: ChatPage,
     meta: { requiresAuth: true },
   },
   {

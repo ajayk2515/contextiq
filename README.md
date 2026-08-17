@@ -2,7 +2,7 @@
 
 Enterprise Knowledge Intelligence Platform (EKIP) is a full-stack AI/RAG MVP. The application is being built phase by phase according to [`PROJECT_SPEC.md`](PROJECT_SPEC.md).
 
-The current implementation provides the local Vue, FastAPI, PostgreSQL, and Qdrant foundation, email/password authentication for the four demo roles, and role-aware document ingestion. Retrieval and RAG behavior are intentionally not included yet.
+The current implementation provides the local Vue, FastAPI, PostgreSQL, and Qdrant foundation, email/password authentication for the four demo roles, role-aware document ingestion, and grounded dense-retrieval question answering with citations.
 
 ## Prerequisites
 
@@ -20,7 +20,7 @@ Copy-Item .env.example .env
 
 The defaults are intended only for local development. Change credentials and service URLs through environment variables rather than editing application code.
 
-Document ingestion requires `OPENAI_API_KEY` for dense embeddings. Upload limits, chunk size and overlap, embedding model and dimensions, and the Qdrant collection name are configurable in `.env`.
+Document ingestion and chat require `OPENAI_API_KEY`. Upload limits, chunk size and overlap, embedding and chat models, retrieval Top-K and score threshold, context size, answer size, and the Qdrant collection name are configurable in `.env`.
 
 ## Local Infrastructure
 
@@ -79,6 +79,8 @@ The application is available at `http://localhost:5173`.
 
 After signing in, open `http://localhost:5173/documents` to upload a PDF, DOCX, PPTX, or Markdown file and assign its allowed roles. Documents move from `PROCESSING` to `READY` after Docling parsing, dense and sparse embedding, and Qdrant indexing. Failed processing stores a visible error message.
 
+Open `http://localhost:5173/chat` to ask a question against indexed documents available to the authenticated role. Phase 3 uses dense retrieval only. The user's server-resolved role is applied as a Qdrant payload filter before similarity search, and answers include citations derived from the chunks supplied as bounded context.
+
 ## Demo Authentication
 
 The seed command is idempotent and creates or refreshes these local accounts:
@@ -104,6 +106,18 @@ $login = Invoke-RestMethod -Method Post `
 
 Invoke-RestMethod -Uri http://localhost:8000/api/auth/me `
   -Headers @{ Authorization = "Bearer $($login.access_token)" }
+```
+
+Use the authenticated token to call the chat endpoint directly:
+
+```powershell
+$answer = Invoke-RestMethod -Method Post `
+  -Uri http://localhost:8000/api/chat `
+  -Headers @{ Authorization = "Bearer $($login.access_token)" } `
+  -ContentType 'application/json' `
+  -Body '{"message":"What is the annual leave policy?"}'
+
+$answer
 ```
 
 Run frontend checks:

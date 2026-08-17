@@ -28,4 +28,14 @@ describe('authentication route guard', () => {
     expect(router.currentRoute.value.name).toBe('login')
     expect(router.currentRoute.value.query.redirect).toBe('/documents')
   })
+
+  it('protects the chat route', async () => {
+    const router = createAppRouter(createPinia(), createMemoryHistory())
+
+    await router.push('/chat')
+    await router.isReady()
+
+    expect(router.currentRoute.value.name).toBe('login')
+    expect(router.currentRoute.value.query.redirect).toBe('/chat')
+  })
 })

@@ -9,6 +9,7 @@ from app.auth.router import router as auth_router
 from app.config import get_settings
 from app.database import close_database
 from app.documents.router import router as documents_router
+from app.rag.router import router as chat_router
 
 
 @asynccontextmanager
@@ -35,6 +36,7 @@ def create_app() -> FastAPI:
     application.include_router(health_router)
     application.include_router(auth_router)
     application.include_router(documents_router)
+    application.include_router(chat_router)
     return application
 
 
