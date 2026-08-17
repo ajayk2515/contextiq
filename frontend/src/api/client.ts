@@ -23,13 +23,13 @@ const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '')
 export async function apiRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers)
   headers.set('Accept', 'application/json')
-  if (init.body) headers.set('Content-Type', 'application/json')
+  if (init.body && !(init.body instanceof FormData)) headers.set('Content-Type', 'application/json')
 
   const response = await fetch(`${apiBaseUrl}${path}`, { ...init, headers })
-  const body = (await response.json()) as T & ApiErrorBody
+  const body = response.status === 204 ? undefined : ((await response.json()) as T & ApiErrorBody)
 
   if (!response.ok) {
-    const detail = body.detail
+    const detail = body?.detail
     const message =
       typeof detail === 'object' && detail?.message
         ? detail.message
@@ -38,5 +38,5 @@ export async function apiRequest<T>(path: string, init: RequestInit = {}): Promi
     throw new ApiError(message, response.status, code)
   }
 
-  return body
+  return body as T
 }

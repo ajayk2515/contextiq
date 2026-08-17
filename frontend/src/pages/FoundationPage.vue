@@ -1,12 +1,11 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
 
 import { fetchHealth, type HealthResponse } from '@/api/health'
+import AppHeader from '@/components/AppHeader.vue'
 import { useAuthStore } from '@/stores/auth'
 
 const auth = useAuthStore()
-const router = useRouter()
 const health = ref<HealthResponse | null>(null)
 const loading = ref(true)
 const requestFailed = ref(false)
@@ -28,41 +27,13 @@ async function loadHealth() {
   }
 }
 
-async function signOut() {
-  auth.logout()
-  await router.replace({ name: 'login' })
-}
-
 onMounted(loadHealth)
 onBeforeUnmount(() => controller.abort())
 </script>
 
 <template>
   <div class="min-h-screen bg-surface text-ink">
-    <header class="border-b border-line bg-white">
-      <div class="mx-auto flex h-16 max-w-6xl items-center justify-between px-5 sm:px-8">
-        <div class="flex items-center gap-3">
-          <div class="grid size-9 place-items-center bg-ink text-sm font-bold text-white">EK</div>
-          <div>
-            <p class="text-sm font-semibold">EKIP</p>
-            <p class="text-xs text-muted">Enterprise Knowledge Intelligence Platform</p>
-          </div>
-        </div>
-        <div class="flex items-center gap-4">
-          <div class="hidden text-right sm:block">
-            <p class="text-xs font-medium">{{ auth.user?.email }}</p>
-            <p class="text-xs text-muted">{{ auth.user?.role }}</p>
-          </div>
-          <button
-            class="text-sm font-medium text-muted hover:text-ink"
-            type="button"
-            @click="signOut"
-          >
-            Sign out
-          </button>
-        </div>
-      </div>
-    </header>
+    <AppHeader />
 
     <main class="mx-auto max-w-6xl px-5 py-10 sm:px-8 sm:py-14">
       <section aria-labelledby="status-heading" class="max-w-3xl">

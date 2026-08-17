@@ -2,7 +2,7 @@
 
 Enterprise Knowledge Intelligence Platform (EKIP) is a full-stack AI/RAG MVP. The application is being built phase by phase according to [`PROJECT_SPEC.md`](PROJECT_SPEC.md).
 
-The current implementation provides the local Vue, FastAPI, PostgreSQL, and Qdrant foundation plus email/password authentication for the four demo roles. Document ingestion and RAG behavior are intentionally not included yet.
+The current implementation provides the local Vue, FastAPI, PostgreSQL, and Qdrant foundation, email/password authentication for the four demo roles, and role-aware document ingestion. Retrieval and RAG behavior are intentionally not included yet.
 
 ## Prerequisites
 
@@ -19,6 +19,8 @@ Copy-Item .env.example .env
 ```
 
 The defaults are intended only for local development. Change credentials and service URLs through environment variables rather than editing application code.
+
+Document ingestion requires `OPENAI_API_KEY` for dense embeddings. Upload limits, chunk size and overlap, embedding model and dimensions, and the Qdrant collection name are configurable in `.env`.
 
 ## Local Infrastructure
 
@@ -61,6 +63,8 @@ python -m mypy app
 python -m pytest
 ```
 
+The first PDF parsing run downloads Docling model assets into a local ignored cache. On Windows, the application uses Hugging Face's no-symlink cache fallback and disables Torch model compilation, so Visual C++ build tools are not required.
+
 ## Frontend
 
 In a second terminal, from the repository root:
@@ -72,6 +76,8 @@ npm run dev
 ```
 
 The application is available at `http://localhost:5173`.
+
+After signing in, open `http://localhost:5173/documents` to upload a PDF, DOCX, PPTX, or Markdown file and assign its allowed roles. Documents move from `PROCESSING` to `READY` after Docling parsing, dense and sparse embedding, and Qdrant indexing. Failed processing stores a visible error message.
 
 ## Demo Authentication
 

@@ -15,5 +15,20 @@ python_version = "3.11"
 strict = true
 
 [[tool.mypy.overrides]]
-module = ["qdrant_client", "qdrant_client.*"]
+module = [
+    "docling",
+    "docling.*",
+    "docling_core",
+    "docling_core.*",
+    "fastembed",
+    "fastembed.*",
+    "openai",
+    "openai.*",
+    "numpy",
+    "numpy.*",
+    "qdrant_client",
+    "qdrant_client.*",
+    "tiktoken",
+    "tiktoken.*",
+]
 follow_imports = "skip"

@@ -1,7 +1,7 @@
 from functools import lru_cache
 from typing import Annotated, Literal
 
-from pydantic import Field, SecretStr, field_validator
+from pydantic import Field, SecretStr, ValidationInfo, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
@@ -18,6 +18,13 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://ekip:ekip_local_password@localhost:5432/ekip"
     qdrant_url: str = "http://localhost:6333"
     qdrant_api_key: str | None = None
+    qdrant_documents_collection: str = "ekip_documents"
+    openai_api_key: SecretStr | None = None
+    openai_embedding_model: str = "text-embedding-3-small"
+    openai_embedding_dimensions: int = Field(default=1536, gt=0)
+    max_upload_size_mb: int = Field(default=25, gt=0, le=100)
+    chunk_size: int = Field(default=800, ge=200, le=2000)
+    chunk_overlap: int = Field(default=120, ge=0, le=500)
     jwt_secret: SecretStr
     jwt_algorithm: Literal["HS256", "HS384", "HS512"] = "HS256"
     jwt_expiration_minutes: int = Field(default=60, gt=0, le=1440)
@@ -46,6 +53,14 @@ class Settings(BaseSettings):
     def require_strong_jwt_secret(cls, value: SecretStr) -> SecretStr:
         if len(value.get_secret_value()) < 32:
             raise ValueError("JWT_SECRET must contain at least 32 characters")
+        return value
+
+    @field_validator("chunk_overlap")
+    @classmethod
+    def require_overlap_smaller_than_chunk(cls, value: int, info: ValidationInfo) -> int:
+        chunk_size = info.data.get("chunk_size", 800)
+        if value >= chunk_size:
+            raise ValueError("CHUNK_OVERLAP must be smaller than CHUNK_SIZE")
         return value
 
 

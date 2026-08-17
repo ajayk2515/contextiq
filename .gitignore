@@ -9,6 +9,8 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.model-cache/
+.pytest-tmp*/
 .coverage
 htmlcov/
 .venv/
@@ -29,4 +31,3 @@ Thumbs.db
 # Runtime files
 *.log
 tmp/
-

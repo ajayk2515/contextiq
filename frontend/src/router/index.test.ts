@@ -18,4 +18,14 @@ describe('authentication route guard', () => {
     expect(router.currentRoute.value.name).toBe('login')
     expect(router.currentRoute.value.query.redirect).toBe('/')
   })
+
+  it('protects the documents route', async () => {
+    const router = createAppRouter(createPinia(), createMemoryHistory())
+
+    await router.push('/documents')
+    await router.isReady()
+
+    expect(router.currentRoute.value.name).toBe('login')
+    expect(router.currentRoute.value.query.redirect).toBe('/documents')
+  })
 })

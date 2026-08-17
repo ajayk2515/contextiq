@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 from app.auth import models as auth_models  # noqa: F401
 from app.config import get_settings
 from app.database import Base
+from app.documents import models as document_models  # noqa: F401
 
 config = context.config
 config.set_main_option("sqlalchemy.url", get_settings().database_url)

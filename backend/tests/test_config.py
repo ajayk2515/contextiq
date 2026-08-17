@@ -18,3 +18,8 @@ def test_cors_origins_are_parsed_from_comma_separated_value() -> None:
 def test_database_url_requires_async_postgresql() -> None:
     with pytest.raises(ValidationError):
         Settings(database_url="sqlite:///local.db")
+
+
+def test_document_overlap_must_be_smaller_than_chunk_size() -> None:
+    with pytest.raises(ValidationError):
+        Settings(chunk_size=500, chunk_overlap=500)
