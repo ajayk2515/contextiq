@@ -4,8 +4,11 @@ from uuid import UUID
 
 from qdrant_client import AsyncQdrantClient, models
 
+from app.auth.models import UserRole
 from app.config import Settings
 from app.vector_store import create_qdrant_client
+
+SUPPORTED_ROLES = frozenset(role.value for role in UserRole)
 
 
 @dataclass(frozen=True)
@@ -31,11 +34,12 @@ class DenseRetriever:
 
     @staticmethod
     def role_filter(role: str) -> models.Filter:
+        validated_role = UserRole(role)
         return models.Filter(
             must=[
                 models.FieldCondition(
-                    key="allowed_roles",
-                    match=models.MatchValue(value=role),
+                    key="allowed_roles[]",
+                    match=models.MatchValue(value=validated_role.value),
                 )
             ]
         )
@@ -58,12 +62,22 @@ class DenseRetriever:
         return [
             chunk
             for point in response.points
-            if (chunk := self._to_retrieved_chunk(point.payload, point.score)) is not None
+            if (chunk := self._to_retrieved_chunk(point.payload, point.score, role)) is not None
         ]
 
     @staticmethod
-    def _to_retrieved_chunk(payload: dict[str, Any] | None, score: float) -> RetrievedChunk | None:
+    def _to_retrieved_chunk(
+        payload: dict[str, Any] | None, score: float, role: str
+    ) -> RetrievedChunk | None:
         if payload is None:
+            return None
+        allowed_roles = payload.get("allowed_roles")
+        if (
+            not isinstance(allowed_roles, list)
+            or not allowed_roles
+            or any(type(item) is not str or item not in SUPPORTED_ROLES for item in allowed_roles)
+            or role not in allowed_roles
+        ):
             return None
         try:
             return RetrievedChunk(

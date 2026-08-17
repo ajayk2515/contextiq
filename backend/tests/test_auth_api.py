@@ -1,14 +1,17 @@
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
+import jwt
 import pytest
 from httpx import ASGITransport, AsyncClient, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.models import User
 from app.auth.security import create_access_token, hash_password
+from app.config import get_settings
 from app.database import get_session
 from app.main import app
 
@@ -105,6 +108,57 @@ async def test_me_rejects_missing_and_invalid_tokens() -> None:
     assert missing_response.status_code == 401
     assert invalid_response.status_code == 401
     assert missing_response.json()["detail"]["code"] == "UNAUTHORIZED"
+
+
+async def test_me_rejects_invalid_signature_expired_token_and_missing_user(
+    demo_user: User,
+) -> None:
+    settings = get_settings()
+    now = datetime.now(UTC)
+    claims = {
+        "sub": str(demo_user.id),
+        "role": "HR",
+        "iat": now - timedelta(minutes=10),
+        "exp": now + timedelta(minutes=10),
+        "iss": settings.jwt_issuer,
+    }
+    invalid_signature = jwt.encode(
+        claims,
+        "different-unit-test-secret-with-at-least-thirty-two-characters",
+        algorithm=settings.jwt_algorithm,
+    )
+    expired = jwt.encode(
+        {**claims, "exp": now - timedelta(minutes=1)},
+        settings.jwt_secret.get_secret_value(),
+        algorithm=settings.jwt_algorithm,
+    )
+
+    invalid_session = make_session(demo_user)
+    invalid_response = await request_with_session(
+        "GET",
+        "/api/auth/me",
+        invalid_session,
+        headers={"Authorization": f"Bearer {invalid_signature}"},
+    )
+    expired_session = make_session(demo_user)
+    expired_response = await request_with_session(
+        "GET",
+        "/api/auth/me",
+        expired_session,
+        headers={"Authorization": f"Bearer {expired}"},
+    )
+    missing_user_response = await request_with_session(
+        "GET",
+        "/api/auth/me",
+        make_session(None),
+        headers={"Authorization": f"Bearer {create_access_token(uuid4(), 'HR')}"},
+    )
+
+    assert invalid_response.status_code == 401
+    assert expired_response.status_code == 401
+    assert missing_user_response.status_code == 401
+    invalid_session.execute.assert_not_awaited()
+    expired_session.execute.assert_not_awaited()
 
 
 async def test_me_resolves_current_role_from_database(demo_user: User) -> None:

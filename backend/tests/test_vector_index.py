@@ -21,6 +21,7 @@ async def test_qdrant_points_contain_dense_sparse_and_rbac_payload() -> None:
     client.collection_exists.return_value = False
     document_id = uuid4()
     chunk_id = uuid4()
+    second_chunk_id = uuid4()
     index = DocumentVectorIndex(settings(), client)
 
     await index.replace_document(
@@ -36,15 +37,28 @@ async def test_qdrant_points_contain_dense_sparse_and_rbac_payload() -> None:
                     page=2,
                     chunk_hash="a" * 64,
                 ),
-            )
+            ),
+            IndexedChunk(
+                id=second_chunk_id,
+                parsed=ParsedChunk(
+                    text="Carry-forward policy",
+                    section="Leave",
+                    page=3,
+                    chunk_hash="b" * 64,
+                ),
+            ),
         ],
-        dense_vectors=[[0.1, 0.2]],
-        sparse_vectors=[SparseEmbedding(indices=[1, 2], values=[0.4, 0.8])],
+        dense_vectors=[[0.1, 0.2], [0.3, 0.4]],
+        sparse_vectors=[
+            SparseEmbedding(indices=[1, 2], values=[0.4, 0.8]),
+            SparseEmbedding(indices=[3], values=[0.6]),
+        ],
     )
 
     client.create_collection.assert_awaited_once()
     call = client.upsert.await_args.kwargs
-    point = call["points"][0]
+    points = call["points"]
+    point = points[0]
     assert point.vector["dense"] == [0.1, 0.2]
     assert isinstance(point.vector["sparse"], models.SparseVector)
     assert point.payload == {
@@ -58,6 +72,8 @@ async def test_qdrant_points_contain_dense_sparse_and_rbac_payload() -> None:
         "chunk_hash": "a" * 64,
         "allowed_roles": ["HR", "Executive"],
     }
+    assert len(points) == 2
+    assert all(indexed.payload["allowed_roles"] == ["HR", "Executive"] for indexed in points)
 
 
 async def test_document_cleanup_uses_document_id_filter() -> None:
