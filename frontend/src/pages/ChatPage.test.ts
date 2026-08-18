@@ -118,4 +118,30 @@ describe('ChatPage', () => {
       'Document retrieval is temporarily unavailable.',
     )
   })
+
+  it('displays the executed reranking strategy for accurate queries', async () => {
+    vi.mocked(askQuestion).mockResolvedValue({
+      answer: 'The policies differ in duration and eligibility.',
+      insufficient_context: false,
+      query_intelligence: {
+        query_id: '405f0c0f-0d6d-4a2c-a9b3-b70c59b07a44',
+        category: 'MULTI_DOC_COMPARISON',
+        profile: 'ACCURATE',
+        intended_strategy: 'HYBRID_WITH_RERANK',
+        executed_strategy: 'HYBRID_RRF_RERANK',
+        candidate_top_k: 15,
+        classification_fallback: false,
+      },
+      sources: [],
+    })
+    const wrapper = mountPage()
+
+    await wrapper.get('textarea').setValue('Compare the policies')
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+
+    expect(wrapper.get('[aria-label="Query routing"]').text()).toContain(
+      'Multi Doc Comparison · ACCURATE · Hybrid RRF Reranker · Top 15',
+    )
+  })
 })

@@ -56,6 +56,8 @@ async def test_dense_retrieval_applies_role_filter_inside_qdrant_query() -> None
     assert chunks[0].document_id == document_id
     assert chunks[0].chunk_id == chunk_id
     assert chunks[0].allowed_roles == ("HR",)
+    assert chunks[0].rank_before == 1
+    assert chunks[0].rrf_score is None
 
 
 async def test_hybrid_retrieval_uses_filtered_named_vectors_and_native_rrf() -> None:
@@ -102,6 +104,8 @@ async def test_hybrid_retrieval_uses_filtered_named_vectors_and_native_rrf() -> 
     assert len(chunks) == 1
     assert chunks[0].chunk_id == chunk_id
     assert chunks[0].allowed_roles == ("HR",)
+    assert chunks[0].rank_before == 1
+    assert chunks[0].rrf_score == 0.75
 
 
 async def test_dense_retrieval_fails_closed_for_malformed_permission_payloads() -> None:

@@ -20,7 +20,7 @@ Copy-Item .env.example .env
 
 The defaults are intended only for local development. Change credentials and service URLs through environment variables rather than editing application code.
 
-Document ingestion and chat require `OPENAI_API_KEY`. Upload limits, chunk size and overlap, embedding and chat models, retrieval score threshold, context size, answer size, and the Qdrant collection name are configurable in `.env`. Retrieval Top-K values are centralized in the FAST, BALANCED, and ACCURATE profile definitions.
+Document ingestion and chat require `OPENAI_API_KEY`. Upload limits, chunk size and overlap, embedding, chat, and reranker models, retrieval score threshold, context size, answer size, and the Qdrant collection name are configurable in `.env`. Retrieval Top-K values are centralized in the FAST, BALANCED, and ACCURATE profile definitions.
 
 ## Local Infrastructure
 
@@ -79,9 +79,11 @@ The application is available at `http://localhost:5173`.
 
 After signing in, open `http://localhost:5173/documents` to upload a PDF, DOCX, PPTX, or Markdown file and assign its allowed roles. Documents move from `PROCESSING` to `READY` after Docling parsing, dense and sparse embedding, and Qdrant indexing. Failed processing stores a visible error message.
 
-Open `http://localhost:5173/chat` to ask a question against indexed documents available to the authenticated role. Query Intelligence classifies the question as FAQ, specific search, multi-document comparison, summarization, or restricted data, then selects the centralized FAST, BALANCED, or ACCURATE retrieval profile. FAST executes dense Top-K 3. BALANCED executes dense and BM25 sparse retrieval with native Qdrant RRF and returns Top-K 8. ACCURATE uses the same hybrid RRF path with Top-K 15; cross-encoder reranking is intentionally deferred to Phase 7. The user's server-resolved role is applied to both Qdrant prefetches before fusion. Responses include the selected routing metadata and citations derived from the final authorized chunks supplied as bounded context.
+Open `http://localhost:5173/chat` to ask a question against indexed documents available to the authenticated role. Query Intelligence classifies the question as FAQ, specific search, multi-document comparison, summarization, or restricted data, then selects the centralized FAST, BALANCED, or ACCURATE retrieval profile. FAST executes dense Top-K 3. BALANCED executes dense and BM25 sparse retrieval with native Qdrant RRF and returns Top-K 8. ACCURATE retrieves 15 hybrid RRF candidates, reranks them locally with `BAAI/bge-reranker-base`, and supplies only the final Top-K 5 to answer generation. The user's server-resolved role is applied to both Qdrant prefetches before fusion and reranking. Responses include the executed strategy and citations derived from the final authorized chunks supplied as bounded context.
 
-Each chat request records its authenticated user, query, classification, selected profile, actual execution strategy, fallback status, and retrieval latency in PostgreSQL. FAST latency covers dense Qdrant retrieval; hybrid latency covers BM25 query generation and the fused Qdrant retrieval request. Apply the latest Alembic migration before using the current chat behavior.
+Each chat request records its authenticated user, query, classification, selected profile, actual execution strategy, fallback status, and retrieval latency in PostgreSQL. Retrieval latency covers query representations and retrieval, plus reranking for ACCURATE. Apply the latest Alembic migration before using the current chat behavior.
+
+The first ACCURATE query downloads the CPU-compatible FastEmbed BGE reranker model into the local model cache. Later requests reuse the same process-wide model instance.
 
 ## Demo Authentication
 

@@ -15,6 +15,7 @@ from app.query_intelligence.domain import (
 )
 from app.query_intelligence.profiles import profile_config
 from app.rag.prompting import INSUFFICIENT_CONTEXT_ANSWER, build_context
+from app.rag.reranking import RerankerService
 from app.rag.retrieval import RetrievedChunk
 from app.rag.service import RagService
 
@@ -28,16 +29,22 @@ def settings(**overrides: object) -> Settings:
     )
 
 
-def chunk(text: str = "Employees receive twenty days of annual leave.") -> RetrievedChunk:
+def chunk(
+    text: str = "Employees receive twenty days of annual leave.",
+    filename: str = "handbook.md",
+    rank_before: int | None = None,
+) -> RetrievedChunk:
     return RetrievedChunk(
         document_id=uuid4(),
         chunk_id=uuid4(),
-        filename="handbook.md",
+        filename=filename,
         page=None,
         section="Annual Leave",
         text=text,
         allowed_roles=("HR",),
         score=0.84,
+        rank_before=rank_before,
+        rrf_score=0.84 if rank_before is not None else None,
     )
 
 
@@ -145,7 +152,7 @@ async def test_rag_service_returns_deterministic_insufficient_context_without_ll
             QueryCategory.MULTI_DOC_COMPARISON,
             RetrievalProfile.ACCURATE,
             15,
-            ExecutedRetrievalStrategy.HYBRID_RRF,
+            ExecutedRetrievalStrategy.HYBRID_RRF_RERANK,
         ),
     ],
 )
@@ -167,6 +174,7 @@ async def test_rag_service_applies_profile_top_k_and_reports_actual_strategy(
     )
     classifier = SimpleNamespace(classify=AsyncMock(return_value=query_decision(category, profile)))
     query_log_writer = SimpleNamespace(record=AsyncMock(return_value=uuid4()))
+    reranker = SimpleNamespace(rerank=AsyncMock(return_value=[]))
     service = RagService(
         settings(),
         embedding,
@@ -174,6 +182,7 @@ async def test_rag_service_applies_profile_top_k_and_reports_actual_strategy(
         SimpleNamespace(generate=AsyncMock()),
         classifier,
         query_log_writer,
+        reranker,
     )
 
     response = await service.answer("Question", uuid4(), "Executive")
@@ -186,8 +195,98 @@ async def test_rag_service_applies_profile_top_k_and_reports_actual_strategy(
         embedding.sparse.assert_awaited_once_with(["Question"])
         retriever.search_dense.assert_not_awaited()
         retriever.search_hybrid.assert_awaited_once_with([0.1, 0.2], sparse, "Executive", top_k)
+    if profile == RetrievalProfile.ACCURATE:
+        reranker.rerank.assert_awaited_once_with("Question", [], 5)
+    else:
+        reranker.rerank.assert_not_awaited()
     assert response.query_intelligence.candidate_top_k == top_k
     assert response.query_intelligence.executed_strategy == strategy
+
+
+async def test_accurate_reranking_limits_context_and_citations_to_final_five() -> None:
+    candidates = [
+        chunk(
+            text=f"Authorized candidate passage {index}",
+            filename=f"candidate-{index}.md",
+            rank_before=index,
+        )
+        for index in range(1, 8)
+    ]
+    model = SimpleNamespace(rerank=lambda *_args, **_kwargs: [0.1, 0.9, 0.2, 0.8, 0.7, 0.6, 0.5])
+    reranker = RerankerService(settings(), model)
+    generator = SimpleNamespace(generate=AsyncMock(return_value="Grounded comparison"))
+    service = RagService(
+        settings(),
+        SimpleNamespace(
+            dense=AsyncMock(return_value=[[0.1, 0.2]]),
+            sparse=AsyncMock(return_value=[SparseEmbedding(indices=[4], values=[0.7])]),
+        ),
+        SimpleNamespace(
+            search_dense=AsyncMock(),
+            search_hybrid=AsyncMock(return_value=candidates),
+            close=AsyncMock(),
+        ),
+        generator,
+        SimpleNamespace(
+            classify=AsyncMock(
+                return_value=query_decision(
+                    QueryCategory.MULTI_DOC_COMPARISON,
+                    RetrievalProfile.ACCURATE,
+                )
+            )
+        ),
+        SimpleNamespace(record=AsyncMock(return_value=uuid4())),
+        reranker,
+    )
+
+    response = await service.answer("Compare the policies", uuid4(), "HR")
+
+    assert [source.filename for source in response.sources] == [
+        "candidate-2.md",
+        "candidate-4.md",
+        "candidate-5.md",
+        "candidate-6.md",
+        "candidate-7.md",
+    ]
+    context = generator.generate.await_args.args[1]
+    assert "Authorized candidate passage 1" not in context
+    assert "Authorized candidate passage 3" not in context
+    assert context.count("[SOURCE ") == 5
+    assert response.query_intelligence.executed_strategy == (
+        ExecutedRetrievalStrategy.HYBRID_RRF_RERANK
+    )
+
+
+async def test_accurate_reranker_failure_returns_safe_error() -> None:
+    service = RagService(
+        settings(),
+        SimpleNamespace(
+            dense=AsyncMock(return_value=[[0.1, 0.2]]),
+            sparse=AsyncMock(return_value=[SparseEmbedding(indices=[4], values=[0.7])]),
+        ),
+        SimpleNamespace(
+            search_dense=AsyncMock(),
+            search_hybrid=AsyncMock(return_value=[chunk(rank_before=1)]),
+            close=AsyncMock(),
+        ),
+        SimpleNamespace(generate=AsyncMock()),
+        SimpleNamespace(
+            classify=AsyncMock(
+                return_value=query_decision(
+                    QueryCategory.MULTI_DOC_COMPARISON,
+                    RetrievalProfile.ACCURATE,
+                )
+            )
+        ),
+        SimpleNamespace(record=AsyncMock(return_value=uuid4())),
+        SimpleNamespace(rerank=AsyncMock(side_effect=RuntimeError("model unavailable"))),
+    )
+
+    with pytest.raises(HTTPException) as error:
+        await service.answer("Compare the policies", uuid4(), "HR")
+
+    assert error.value.status_code == 503
+    assert error.value.detail["code"] == "RERANKING_FAILED"
 
 
 @pytest.mark.parametrize(

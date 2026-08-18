@@ -91,9 +91,9 @@ def test_retrieval_profile_configuration_matches_phase_five_contract() -> None:
         accurate.final_top_k,
     ) == (
         IntendedRetrievalStrategy.HYBRID_WITH_RERANK,
-        ExecutedRetrievalStrategy.HYBRID_RRF,
+        ExecutedRetrievalStrategy.HYBRID_RRF_RERANK,
         15,
-        False,
+        True,
         5,
     )
 

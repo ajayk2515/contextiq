@@ -22,6 +22,10 @@ class RetrievedChunk:
     text: str
     allowed_roles: tuple[str, ...]
     score: float
+    rank_before: int | None = None
+    rrf_score: float | None = None
+    reranker_score: float | None = None
+    rank_after: int | None = None
 
 
 class QdrantRetriever:
@@ -65,8 +69,16 @@ class QdrantRetriever:
         )
         return [
             chunk
-            for point in response.points
-            if (chunk := self._to_retrieved_chunk(point.payload, point.score, role)) is not None
+            for rank, point in enumerate(response.points, start=1)
+            if (
+                chunk := self._to_retrieved_chunk(
+                    point.payload,
+                    point.score,
+                    role,
+                    rank_before=rank,
+                )
+            )
+            is not None
         ]
 
     async def search_hybrid(
@@ -109,13 +121,26 @@ class QdrantRetriever:
         )
         return [
             chunk
-            for point in response.points
-            if (chunk := self._to_retrieved_chunk(point.payload, point.score, role)) is not None
+            for rank, point in enumerate(response.points, start=1)
+            if (
+                chunk := self._to_retrieved_chunk(
+                    point.payload,
+                    point.score,
+                    role,
+                    rank_before=rank,
+                    rrf_score=float(point.score),
+                )
+            )
+            is not None
         ]
 
     @staticmethod
     def _to_retrieved_chunk(
-        payload: dict[str, Any] | None, score: float, role: str
+        payload: dict[str, Any] | None,
+        score: float,
+        role: str,
+        rank_before: int | None = None,
+        rrf_score: float | None = None,
     ) -> RetrievedChunk | None:
         if payload is None:
             return None
@@ -137,6 +162,8 @@ class QdrantRetriever:
                 text=str(payload["text"]),
                 allowed_roles=tuple(allowed_roles),
                 score=float(score),
+                rank_before=rank_before,
+                rrf_score=rrf_score,
             )
         except (KeyError, TypeError, ValueError):
             return None

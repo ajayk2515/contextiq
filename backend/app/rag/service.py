@@ -11,6 +11,7 @@ from app.query_intelligence.profiles import RetrievalProfileConfig, profile_conf
 from app.rag.errors import raise_chat_unavailable
 from app.rag.generation import AnswerGenerator
 from app.rag.prompting import INSUFFICIENT_CONTEXT_ANSWER, build_context
+from app.rag.reranking import RerankerService
 from app.rag.retrieval import QdrantRetriever, RetrievedChunk
 from app.rag.schemas import ChatResponse, ChatSource, QueryIntelligenceMetadata
 
@@ -60,6 +61,7 @@ class RagService:
         generator: AnswerGenerator | None = None,
         classifier: QueryClassifier | None = None,
         query_log_writer: QueryLogWriter | None = None,
+        reranker: RerankerService | None = None,
     ) -> None:
         self.settings = settings
         self.embedding_service = embedding_service or EmbeddingService(settings)
@@ -67,10 +69,12 @@ class RagService:
         self.generator = generator or AnswerGenerator(settings)
         self.classifier = classifier or QueryClassifier(settings)
         self.query_log_writer = query_log_writer or QueryLogWriter()
+        self.reranker = reranker or RerankerService(settings)
 
     async def answer(self, question: str, user_id: UUID, role: str) -> ChatResponse:
         decision = await self.classifier.classify(question)
         profile = profile_config(decision.profile)
+        retrieval_started = perf_counter()
 
         try:
             query_vectors = await self.embedding_service.dense([question])
@@ -81,8 +85,10 @@ class RagService:
                 "The question could not be embedded. Please try again.",
             )
 
-        retrieval_started = perf_counter()
-        if profile.executed_strategy == ExecutedRetrievalStrategy.HYBRID_RRF:
+        if profile.executed_strategy in {
+            ExecutedRetrievalStrategy.HYBRID_RRF,
+            ExecutedRetrievalStrategy.HYBRID_RRF_RERANK,
+        }:
             try:
                 sparse_vectors = await self.embedding_service.sparse([question])
             except Exception:
@@ -114,6 +120,22 @@ class RagService:
                 raise_chat_unavailable(
                     "RETRIEVAL_FAILED",
                     "Document retrieval is temporarily unavailable. Please try again.",
+                )
+
+        if profile.reranker_enabled:
+            try:
+                if profile.final_top_k is None:
+                    raise RuntimeError("The reranking profile has no final candidate limit.")
+                chunks = await self.reranker.rerank(
+                    question,
+                    chunks,
+                    profile.final_top_k,
+                )
+            except Exception:
+                logger.exception("Cross-encoder reranking failed")
+                raise_chat_unavailable(
+                    "RERANKING_FAILED",
+                    "The retrieved documents could not be reranked. Please try again.",
                 )
         retrieval_latency_ms = max(0, round((perf_counter() - retrieval_started) * 1000))
 

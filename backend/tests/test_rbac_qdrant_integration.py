@@ -187,6 +187,9 @@ async def test_retrieval_profiles_never_bypass_qdrant_role_filter() -> None:
 
         for category, profile in profiles:
             retriever = QdrantRetriever(configured, client)
+            reranker = SimpleNamespace(
+                rerank=AsyncMock(side_effect=lambda _query, candidates, top_k: candidates[:top_k])
+            )
             service = RagService(
                 configured,
                 SimpleNamespace(
@@ -201,6 +204,7 @@ async def test_retrieval_profiles_never_bypass_qdrant_role_filter() -> None:
                     )
                 ),
                 SimpleNamespace(record=AsyncMock(return_value=uuid4())),
+                reranker,
             )
 
             developer_response = await service.answer("What is the bonus?", uuid4(), "Developer")
@@ -209,6 +213,13 @@ async def test_retrieval_profiles_never_bypass_qdrant_role_filter() -> None:
             assert developer_response.insufficient_context is True
             assert developer_response.sources == []
             assert [source.chunk_id for source in hr_response.sources] == [restricted_id]
+            if profile == RetrievalProfile.ACCURATE:
+                developer_candidates = reranker.rerank.await_args_list[0].args[1]
+                hr_candidates = reranker.rerank.await_args_list[1].args[1]
+                assert developer_candidates == []
+                assert [candidate.chunk_id for candidate in hr_candidates] == [restricted_id]
+            else:
+                reranker.rerank.assert_not_awaited()
     finally:
         await client.close()
 

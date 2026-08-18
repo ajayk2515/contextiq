@@ -36,9 +36,9 @@ PROFILE_CONFIGS = {
     RetrievalProfile.ACCURATE: RetrievalProfileConfig(
         profile=RetrievalProfile.ACCURATE,
         intended_strategy=IntendedRetrievalStrategy.HYBRID_WITH_RERANK,
-        executed_strategy=ExecutedRetrievalStrategy.HYBRID_RRF,
+        executed_strategy=ExecutedRetrievalStrategy.HYBRID_RRF_RERANK,
         candidate_top_k=15,
-        reranker_enabled=False,
+        reranker_enabled=True,
         final_top_k=5,
     ),
 }

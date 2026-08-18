@@ -25,7 +25,11 @@ function routingLabel(value: string) {
     .toLowerCase()
     .split('_')
     .map((word) =>
-      word === 'rrf' ? word.toUpperCase() : word.charAt(0).toUpperCase() + word.slice(1),
+      word === 'rrf'
+        ? word.toUpperCase()
+        : word === 'rerank'
+          ? 'Reranker'
+          : word.charAt(0).toUpperCase() + word.slice(1),
     )
     .join(' ')
 }

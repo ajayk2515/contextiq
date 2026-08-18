@@ -26,6 +26,7 @@ class IntendedRetrievalStrategy(StrEnum):
 class ExecutedRetrievalStrategy(StrEnum):
     DENSE = "DENSE"
     HYBRID_RRF = "HYBRID_RRF"
+    HYBRID_RRF_RERANK = "HYBRID_RRF_RERANK"
 
 
 class StructuredClassification(BaseModel):
