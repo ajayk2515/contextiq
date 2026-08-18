@@ -9,6 +9,12 @@ import {
   type EvaluationRunDetail,
   type EvaluationRunSummary,
 } from '@/api/evaluations'
+import {
+  dismissRecommendation,
+  fetchRecommendations,
+  type OptimizationMetric,
+  type OptimizationRecommendation,
+} from '@/api/recommendations'
 import AppHeader from '@/components/AppHeader.vue'
 import { useAuthStore } from '@/stores/auth'
 
@@ -23,10 +29,14 @@ const REPRESENTATIVE_CASES = [
 const auth = useAuthStore()
 const runs = ref<EvaluationRunSummary[]>([])
 const selected = ref<EvaluationRunDetail | null>(null)
+const recommendations = ref<OptimizationRecommendation[]>([])
 const scope = ref<'all' | 'representative'>('representative')
 const loading = ref(true)
 const starting = ref(false)
 const error = ref('')
+const recommendationsLoading = ref(false)
+const recommendationsError = ref('')
+const dismissingId = ref<string | null>(null)
 let pollTimer: ReturnType<typeof window.setTimeout> | undefined
 
 const progress = computed(() => {
@@ -40,6 +50,18 @@ function message(errorValue: unknown) {
 
 function score(value: number | null) {
   return value === null ? 'N/A' : value.toFixed(3)
+}
+
+function metricLabel(metric: OptimizationMetric) {
+  return {
+    CONTEXT_RECALL: 'Context recall',
+    CONTEXT_PRECISION: 'Context precision',
+    RETRIEVAL_LATENCY_MS: 'Retrieval latency',
+  }[metric]
+}
+
+function optimizationValue(metric: OptimizationMetric, value: number) {
+  return metric === 'RETRIEVAL_LATENCY_MS' ? `${Math.round(value)} ms` : value.toFixed(3)
 }
 
 function date(value: string) {
@@ -59,11 +81,47 @@ function schedulePoll() {
 
 async function loadRun(runId: string) {
   if (!auth.token) return
+  recommendations.value = []
+  recommendationsError.value = ''
   try {
     selected.value = await fetchEvaluation(auth.token, runId)
     error.value = ''
+    if (selected.value.status === 'COMPLETED') await loadRecommendations(runId)
   } catch (errorValue) {
     error.value = message(errorValue)
+  }
+}
+
+async function loadRecommendations(runId: string) {
+  if (!auth.token) return
+  recommendationsLoading.value = true
+  try {
+    recommendations.value = await fetchRecommendations(auth.token, runId)
+    recommendationsError.value = ''
+  } catch (errorValue) {
+    recommendationsError.value =
+      errorValue instanceof ApiError
+        ? errorValue.message
+        : 'Optimization recommendations are unavailable.'
+  } finally {
+    recommendationsLoading.value = false
+  }
+}
+
+async function dismiss(item: OptimizationRecommendation) {
+  if (!auth.token) return
+  dismissingId.value = item.id
+  try {
+    await dismissRecommendation(auth.token, item.id)
+    recommendations.value = recommendations.value.filter(
+      (recommendation) => recommendation.id !== item.id,
+    )
+    recommendationsError.value = ''
+  } catch (errorValue) {
+    recommendationsError.value =
+      errorValue instanceof ApiError ? errorValue.message : 'The recommendation was not dismissed.'
+  } finally {
+    dismissingId.value = null
   }
 }
 
@@ -215,6 +273,69 @@ onBeforeUnmount(() => {
           <p v-if="selected.error_message" class="mt-5 text-sm text-error">
             {{ selected.error_message }}
           </p>
+
+          <section v-if="selected.status === 'COMPLETED'" class="mt-8 border-t border-line pt-6">
+            <h2 class="text-base font-semibold">Optimization recommendations</h2>
+            <p v-if="recommendationsLoading" class="mt-4 text-sm text-muted">
+              Loading recommendations...
+            </p>
+            <p
+              v-else-if="recommendationsError"
+              class="mt-4 border border-error-line bg-error-bg p-3 text-sm text-error"
+              role="alert"
+            >
+              {{ recommendationsError }}
+            </p>
+            <p
+              v-else-if="!recommendations.length"
+              class="mt-4 border border-line bg-white p-4 text-sm text-muted"
+            >
+              No optimization recommendations were generated for this run.
+            </p>
+            <div v-else class="mt-4 space-y-3">
+              <article
+                v-for="item in recommendations"
+                :key="item.id"
+                class="border border-line bg-white p-4"
+              >
+                <div class="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p class="text-sm font-semibold">{{ metricLabel(item.metric) }}</p>
+                    <p class="mt-1 text-xs text-muted">
+                      {{ item.profile ?? 'All profiles' }} · {{ item.strategy ?? 'Mixed strategy' }}
+                    </p>
+                  </div>
+                  <div class="flex items-center gap-3">
+                    <span class="status-label status-pending">{{ item.status }}</span>
+                    <button
+                      class="text-xs font-semibold text-muted hover:text-ink"
+                      type="button"
+                      :disabled="dismissingId === item.id"
+                      @click="dismiss(item)"
+                    >
+                      {{ dismissingId === item.id ? 'Dismissing...' : 'Dismiss' }}
+                    </button>
+                  </div>
+                </div>
+                <dl class="mt-4 flex flex-wrap gap-6 border-t border-line pt-3">
+                  <div>
+                    <dt class="text-xs text-muted">Current</dt>
+                    <dd class="mt-1 text-sm font-semibold">
+                      {{ optimizationValue(item.metric, item.current_value) }}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt class="text-xs text-muted">Threshold</dt>
+                    <dd class="mt-1 text-sm font-semibold">
+                      {{ optimizationValue(item.metric, item.threshold) }}
+                    </dd>
+                  </div>
+                </dl>
+                <p class="mt-4 text-sm leading-6">{{ item.recommendation }}</p>
+              </article>
+            </div>
+          </section>
+
           <div class="mt-6 space-y-3">
             <article
               v-for="item in selected.evaluations"

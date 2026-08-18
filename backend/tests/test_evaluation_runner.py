@@ -1,13 +1,13 @@
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 from app.auth.models import User, UserRole
 from app.config import Settings
 from app.evaluations.dataset import load_dataset
-from app.evaluations.models import EvaluationFailureCategory
+from app.evaluations.models import EvaluationFailureCategory, EvaluationRun, EvaluationRunStatus
 from app.evaluations.ragas_adapter import RagasScores
-from app.evaluations.runner import EvaluationRunner
+from app.evaluations.runner import EvaluationRunner, _optimize_completed_run
 from app.query_intelligence.domain import (
     ExecutedRetrievalStrategy,
     IntendedRetrievalStrategy,
@@ -115,3 +115,39 @@ async def test_runner_rejects_missing_demo_role_without_running_rag() -> None:
     assert result.failure_category == EvaluationFailureCategory.AUTHORIZATION
     rag.prepare.assert_not_awaited()
     evaluator.evaluate.assert_not_awaited()
+
+
+async def test_evaluation_completion_marks_run_before_triggering_optimizer() -> None:
+    run = EvaluationRun(
+        id=uuid4(), status=EvaluationRunStatus.RUNNING, total_cases=1, completed_cases=1
+    )
+    session = MagicMock()
+    session.get = AsyncMock(return_value=run)
+    session.commit = AsyncMock()
+
+    class SessionContext:
+        async def __aenter__(self):
+            return session
+
+        async def __aexit__(self, *_args):
+            return None
+
+    with (
+        patch("app.evaluations.runner.AsyncSessionFactory", return_value=SessionContext()),
+        patch("app.evaluations.runner._optimize_completed_run", new=AsyncMock()) as optimize,
+    ):
+        await EvaluationRunner(settings())._complete_run(run.id)
+
+    assert run.status == EvaluationRunStatus.COMPLETED
+    assert run.completed_at is not None
+    session.commit.assert_awaited_once()
+    optimize.assert_awaited_once_with(run.id)
+
+
+async def test_optimizer_failure_does_not_propagate_to_completed_evaluation() -> None:
+    run_id = uuid4()
+    with patch(
+        "app.evaluations.runner.generate_recommendations",
+        new=AsyncMock(side_effect=RuntimeError("optimization unavailable")),
+    ):
+        await _optimize_completed_run(run_id)

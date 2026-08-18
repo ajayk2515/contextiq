@@ -2,7 +2,7 @@
 
 Enterprise Knowledge Intelligence Platform (EKIP) is a full-stack AI/RAG MVP. The application is being built phase by phase according to [`PROJECT_SPEC.md`](PROJECT_SPEC.md).
 
-The current implementation provides the local Vue, FastAPI, PostgreSQL, and Qdrant foundation, email/password authentication for the four demo roles, role-aware document ingestion, grounded adaptive retrieval, SSE answer streaming, persistent conversations, a historical Retrieval Inspector, and explicit RAGAS evaluation runs over a checked-in synthetic corpus.
+The current implementation provides the local Vue, FastAPI, PostgreSQL, and Qdrant foundation, email/password authentication for the four demo roles, role-aware document ingestion, grounded adaptive retrieval, SSE answer streaming, persistent conversations, a historical Retrieval Inspector, explicit RAGAS evaluation runs over a checked-in synthetic corpus, and deterministic optimization recommendations.
 
 ## Prerequisites
 
@@ -121,7 +121,7 @@ with their intended role metadata. It also ensures the four demo identities exis
 The source documents and 23-case dataset are under `evaluation/`.
 
 Open `http://localhost:5173/evaluations` to run either the representative five-case
-set or all 20 cases. The authenticated API endpoints are:
+set or all 23 cases. The authenticated API endpoints are:
 
 ```text
 POST /api/evaluations/run
@@ -137,6 +137,43 @@ generation are passed to RAGAS 0.4 collection metrics for Faithfulness, Answer
 Relevancy, Context Precision, and Context Recall. Runs, progress, per-case results,
 nullable metric failures, and the original Retrieval Inspector `query_id` are persisted
 in PostgreSQL.
+
+## Optimization Recommendations
+
+When an evaluation run is marked `COMPLETED`, the Optimization Engine groups its valid
+quality metrics and authoritative `query_logs.retrieval_latency_ms` values by retrieval
+profile and executed strategy. It applies three fixed rules:
+
+```text
+Context Recall < 0.65
+Context Precision < 0.60
+Retrieval Latency > 2500 ms
+```
+
+Null metrics are ignored, and equality at a threshold does not trigger a rule.
+Recommendations are deterministic templates that reflect whether dense retrieval,
+hybrid RRF, or cross-encoder reranking actually ran. They are persisted for the source
+evaluation run but never modify retrieval profiles, Top-K values, environment variables,
+Qdrant, or deployment configuration.
+
+The evaluations page displays open recommendations beneath the selected completed run.
+Dismissal changes the status to `DISMISSED`; it does not delete or apply the recommendation.
+The authenticated API is:
+
+```text
+GET   /api/recommendations?evaluation_run_id={run_id}
+PATCH /api/recommendations/{recommendation_id}
+```
+
+To generate or regenerate recommendations for a completed run created before Phase 11:
+
+```powershell
+cd backend
+python -m scripts.generate_recommendations <evaluation-run-uuid>
+```
+
+Regeneration transactionally replaces recommendations only for that run, preventing
+duplicates while leaving older evaluation runs and their recommendations unchanged.
 
 ## Demo Authentication
 

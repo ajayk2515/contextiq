@@ -18,6 +18,7 @@ from app.evaluations.models import (
     EvaluationRunStatus,
 )
 from app.evaluations.ragas_adapter import RagasEvaluator, RagasScores
+from app.optimization.service import generate_recommendations
 from app.rag.service import RagService
 
 logger = logging.getLogger(__name__)
@@ -41,6 +42,15 @@ def _failure_category(error: Exception) -> EvaluationFailureCategory:
         if any(part in code for part in ("RETRIEVAL", "RERANK", "EMBEDDING", "SPARSE")):
             return EvaluationFailureCategory.RETRIEVAL
     return EvaluationFailureCategory.SYSTEM
+
+
+async def _optimize_completed_run(run_id: UUID) -> None:
+    try:
+        await generate_recommendations(run_id)
+    except Exception:
+        logger.exception(
+            "Optimization recommendation generation failed for completed run %s", run_id
+        )
 
 
 class EvaluationRunner:
@@ -71,6 +81,18 @@ class EvaluationRunner:
                 raise RuntimeError("Evaluation run disappeared while executing.")
             run.completed_cases += 1
             await session.commit()
+
+    async def _complete_run(self, run_id: UUID) -> None:
+        run_completed = False
+        async with AsyncSessionFactory() as session:
+            run = await session.get(EvaluationRun, run_id)
+            if run is not None:
+                run.status = EvaluationRunStatus.COMPLETED
+                run.completed_at = datetime.now(UTC)
+                await session.commit()
+                run_completed = True
+        if run_completed:
+            await _optimize_completed_run(run_id)
 
     async def _evaluate_case(
         self,
@@ -143,12 +165,7 @@ class EvaluationRunner:
                 result = await self._evaluate_case(run_id, case, users, rag, evaluator)
                 await self._persist_result(result)
 
-            async with AsyncSessionFactory() as session:
-                run = await session.get(EvaluationRun, run_id)
-                if run is not None:
-                    run.status = EvaluationRunStatus.COMPLETED
-                    run.completed_at = datetime.now(UTC)
-                    await session.commit()
+            await self._complete_run(run_id)
         except Exception:
             logger.exception("Evaluation run %s failed", run_id)
             async with AsyncSessionFactory() as session:
