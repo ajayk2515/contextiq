@@ -14,6 +14,10 @@ from app.ingestion.vector_index import DocumentVectorIndex, IndexedChunk
 
 logger = logging.getLogger(__name__)
 
+INTERRUPTED_PROCESSING_MESSAGE = (
+    "Document processing was interrupted by an application restart. Upload the document again."
+)
+
 
 def _safe_failure_message(error: Exception) -> str:
     if isinstance(error, ValueError | RuntimeError):
@@ -30,6 +34,39 @@ async def _set_failed(document_id: UUID, error: Exception) -> None:
         document.chunk_count = 0
         document.error_message = _safe_failure_message(error)
         await session.commit()
+
+
+async def recover_interrupted_documents() -> int:
+    async with AsyncSessionFactory() as session:
+        result = await session.execute(
+            select(Document).where(Document.status == DocumentStatus.PROCESSING)
+        )
+        documents = list(result.scalars().all())
+        interrupted = [
+            document for document in documents if document.status == DocumentStatus.PROCESSING
+        ]
+
+        if not interrupted:
+            return 0
+
+        vector_index = DocumentVectorIndex(get_settings())
+        try:
+            for document in interrupted:
+                try:
+                    await vector_index.delete_document(document.id)
+                except Exception:
+                    logger.exception(
+                        "Could not clean vectors for interrupted document %s", document.id
+                    )
+                document.status = DocumentStatus.FAILED
+                document.chunk_count = 0
+                document.error_message = INTERRUPTED_PROCESSING_MESSAGE
+            await session.commit()
+        finally:
+            await vector_index.close()
+
+        logger.warning("Marked %d interrupted documents as failed", len(interrupted))
+        return len(interrupted)
 
 
 async def process_document(document_id: UUID, temporary_path: str) -> None:

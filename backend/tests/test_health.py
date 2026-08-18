@@ -2,7 +2,21 @@ from unittest.mock import AsyncMock, patch
 
 from httpx import ASGITransport, AsyncClient
 
-from app.main import app
+from app.main import app, lifespan
+
+
+async def test_startup_recovers_interrupted_documents() -> None:
+    recovery = AsyncMock()
+    close = AsyncMock()
+
+    with (
+        patch("app.main.recover_interrupted_documents", recovery),
+        patch("app.main.close_database", close),
+    ):
+        async with lifespan(app):
+            recovery.assert_awaited_once()
+
+    close.assert_awaited_once()
 
 
 async def test_health_reports_connected_dependencies() -> None:

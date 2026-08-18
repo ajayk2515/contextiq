@@ -12,7 +12,7 @@ def settings() -> Settings:
     return Settings(
         jwt_secret="unit-test-jwt-secret-with-at-least-thirty-two-characters",
         openai_api_key=None,
-        reranker_model="BAAI/bge-reranker-base",
+        reranker_model="Xenova/ms-marco-MiniLM-L-6-v2",
     )
 
 
@@ -38,13 +38,13 @@ def test_cross_encoder_model_is_cpu_only_lazy_and_cached() -> None:
         with patch(
             "fastembed.rerank.cross_encoder.TextCrossEncoder", return_value=model
         ) as constructor:
-            first = _cross_encoder_model("BAAI/bge-reranker-base")
-            second = _cross_encoder_model("BAAI/bge-reranker-base")
+            first = _cross_encoder_model("Xenova/ms-marco-MiniLM-L-6-v2")
+            second = _cross_encoder_model("Xenova/ms-marco-MiniLM-L-6-v2")
 
         assert first is model
         assert second is model
         constructor.assert_called_once_with(
-            model_name="BAAI/bge-reranker-base",
+            model_name="Xenova/ms-marco-MiniLM-L-6-v2",
             providers=["CPUExecutionProvider"],
             lazy_load=True,
         )

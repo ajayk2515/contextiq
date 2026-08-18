@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     openai_chat_model: str = "gpt-4.1-mini"
     ragas_llm_model: str = "gpt-4.1-mini"
     ragas_embedding_model: str = "text-embedding-3-small"
-    reranker_model: str = "BAAI/bge-reranker-base"
+    reranker_model: str = "Xenova/ms-marco-MiniLM-L-6-v2"
     rag_score_threshold: float = Field(default=0.35, ge=-1, le=1)
     rag_max_context_chars: int = Field(default=12000, ge=1000, le=50000)
     rag_max_answer_tokens: int = Field(default=600, ge=100, le=2000)

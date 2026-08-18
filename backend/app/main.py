@@ -12,6 +12,7 @@ from app.conversations.router import router as conversations_router
 from app.database import close_database
 from app.documents.router import router as documents_router
 from app.evaluations.router import router as evaluations_router
+from app.ingestion.service import recover_interrupted_documents
 from app.optimization.router import router as optimization_router
 from app.query_intelligence.router import router as query_inspector_router
 from app.rag.router import router as chat_router
@@ -19,6 +20,7 @@ from app.rag.router import router as chat_router
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    await recover_interrupted_documents()
     yield
     await close_database()
 

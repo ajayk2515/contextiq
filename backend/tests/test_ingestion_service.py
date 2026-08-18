@@ -7,7 +7,11 @@ from uuid import uuid4
 from app.documents.models import Document, DocumentStatus
 from app.ingestion.embeddings import EmbeddingConfigurationError, SparseEmbedding
 from app.ingestion.parser import ParsedChunk
-from app.ingestion.service import process_document
+from app.ingestion.service import (
+    INTERRUPTED_PROCESSING_MESSAGE,
+    process_document,
+    recover_interrupted_documents,
+)
 
 
 class SessionContext(AbstractAsyncContextManager[MagicMock]):
@@ -35,6 +39,68 @@ def document() -> Document:
         uploaded_by=uuid4(),
         allowed_roles=["HR", "Executive"],
     )
+
+
+async def test_startup_recovery_marks_only_processing_documents_failed() -> None:
+    processing = document()
+    processing.chunk_count = 3
+    ready = document()
+    ready.status = DocumentStatus.READY
+    ready.chunk_count = 2
+    failed = document()
+    failed.status = DocumentStatus.FAILED
+    failed.error_message = "Existing failure"
+    result = MagicMock()
+    result.scalars.return_value.all.return_value = [processing, ready, failed]
+    session = MagicMock()
+    session.execute = AsyncMock(return_value=result)
+    session.commit = AsyncMock()
+    vector_index = MagicMock()
+    vector_index.delete_document = AsyncMock()
+    vector_index.close = AsyncMock()
+
+    with (
+        patch(
+            "app.ingestion.service.AsyncSessionFactory",
+            return_value=SessionContext(session),
+        ),
+        patch("app.ingestion.service.DocumentVectorIndex", return_value=vector_index),
+    ):
+        recovered = await recover_interrupted_documents()
+
+    assert recovered == 1
+    assert processing.status == DocumentStatus.FAILED
+    assert processing.chunk_count == 0
+    assert processing.error_message == INTERRUPTED_PROCESSING_MESSAGE
+    assert ready.status == DocumentStatus.READY
+    assert ready.chunk_count == 2
+    assert ready.error_message is None
+    assert failed.status == DocumentStatus.FAILED
+    assert failed.error_message == "Existing failure"
+    vector_index.delete_document.assert_awaited_once_with(processing.id)
+    vector_index.close.assert_awaited_once()
+    session.commit.assert_awaited_once()
+
+
+async def test_startup_recovery_does_nothing_without_processing_documents() -> None:
+    result = MagicMock()
+    result.scalars.return_value.all.return_value = []
+    session = MagicMock()
+    session.execute = AsyncMock(return_value=result)
+    session.commit = AsyncMock()
+
+    with (
+        patch(
+            "app.ingestion.service.AsyncSessionFactory",
+            return_value=SessionContext(session),
+        ),
+        patch("app.ingestion.service.DocumentVectorIndex") as vector_index,
+    ):
+        recovered = await recover_interrupted_documents()
+
+    assert recovered == 0
+    vector_index.assert_not_called()
+    session.commit.assert_not_awaited()
 
 
 def first_session(item: Document) -> MagicMock:
