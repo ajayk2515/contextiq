@@ -90,7 +90,7 @@ describe('ChatPage', () => {
         category: 'SPECIFIC_SEARCH',
         profile: 'BALANCED',
         intended_strategy: 'HYBRID',
-        executed_strategy: 'DENSE_FALLBACK',
+        executed_strategy: 'HYBRID_RRF',
         candidate_top_k: 8,
         classification_fallback: true,
       },
@@ -99,6 +99,9 @@ describe('ChatPage', () => {
 
     expect(wrapper.text()).toContain('Insufficient context')
     expect(wrapper.text()).toContain("I couldn't find enough information.")
+    expect(wrapper.get('[aria-label="Query routing"]').text()).toContain(
+      'Specific Search · BALANCED · Hybrid RRF · Top 8',
+    )
   })
 
   it('shows safe API errors', async () => {

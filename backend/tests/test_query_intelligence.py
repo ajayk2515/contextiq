@@ -78,7 +78,7 @@ def test_retrieval_profile_configuration_matches_phase_five_contract() -> None:
         balanced.final_top_k,
     ) == (
         IntendedRetrievalStrategy.HYBRID,
-        ExecutedRetrievalStrategy.DENSE_FALLBACK,
+        ExecutedRetrievalStrategy.HYBRID_RRF,
         8,
         False,
         None,
@@ -91,9 +91,9 @@ def test_retrieval_profile_configuration_matches_phase_five_contract() -> None:
         accurate.final_top_k,
     ) == (
         IntendedRetrievalStrategy.HYBRID_WITH_RERANK,
-        ExecutedRetrievalStrategy.DENSE_FALLBACK,
+        ExecutedRetrievalStrategy.HYBRID_RRF,
         15,
-        True,
+        False,
         5,
     )
 

@@ -5,13 +5,13 @@ from uuid import UUID
 from app.config import Settings
 from app.ingestion.embeddings import EmbeddingService
 from app.query_intelligence.classifier import QueryClassifier
-from app.query_intelligence.domain import QueryDecision
+from app.query_intelligence.domain import ExecutedRetrievalStrategy, QueryDecision
 from app.query_intelligence.persistence import QueryLogWriter
 from app.query_intelligence.profiles import RetrievalProfileConfig, profile_config
 from app.rag.errors import raise_chat_unavailable
 from app.rag.generation import AnswerGenerator
 from app.rag.prompting import INSUFFICIENT_CONTEXT_ANSWER, build_context
-from app.rag.retrieval import DenseRetriever, RetrievedChunk
+from app.rag.retrieval import QdrantRetriever, RetrievedChunk
 from app.rag.schemas import ChatResponse, ChatSource, QueryIntelligenceMetadata
 
 logger = logging.getLogger(__name__)
@@ -56,14 +56,14 @@ class RagService:
         self,
         settings: Settings,
         embedding_service: EmbeddingService | None = None,
-        retriever: DenseRetriever | None = None,
+        retriever: QdrantRetriever | None = None,
         generator: AnswerGenerator | None = None,
         classifier: QueryClassifier | None = None,
         query_log_writer: QueryLogWriter | None = None,
     ) -> None:
         self.settings = settings
         self.embedding_service = embedding_service or EmbeddingService(settings)
-        self.retriever = retriever or DenseRetriever(settings)
+        self.retriever = retriever or QdrantRetriever(settings)
         self.generator = generator or AnswerGenerator(settings)
         self.classifier = classifier or QueryClassifier(settings)
         self.query_log_writer = query_log_writer or QueryLogWriter()
@@ -81,16 +81,41 @@ class RagService:
                 "The question could not be embedded. Please try again.",
             )
 
-        try:
-            retrieval_started = perf_counter()
-            chunks = await self.retriever.search(query_vectors[0], role, profile.candidate_top_k)
-            retrieval_latency_ms = max(0, round((perf_counter() - retrieval_started) * 1000))
-        except Exception:
-            logger.exception("Dense retrieval failed")
-            raise_chat_unavailable(
-                "RETRIEVAL_FAILED",
-                "Document retrieval is temporarily unavailable. Please try again.",
-            )
+        retrieval_started = perf_counter()
+        if profile.executed_strategy == ExecutedRetrievalStrategy.HYBRID_RRF:
+            try:
+                sparse_vectors = await self.embedding_service.sparse([question])
+            except Exception:
+                logger.exception("Sparse query generation failed")
+                raise_chat_unavailable(
+                    "SPARSE_QUERY_FAILED",
+                    "The lexical query representation could not be generated. Please try again.",
+                )
+            try:
+                chunks = await self.retriever.search_hybrid(
+                    query_vectors[0],
+                    sparse_vectors[0],
+                    role,
+                    profile.candidate_top_k,
+                )
+            except Exception:
+                logger.exception("Hybrid RRF retrieval failed")
+                raise_chat_unavailable(
+                    "HYBRID_RETRIEVAL_FAILED",
+                    "Hybrid document retrieval is temporarily unavailable. Please try again.",
+                )
+        else:
+            try:
+                chunks = await self.retriever.search_dense(
+                    query_vectors[0], role, profile.candidate_top_k
+                )
+            except Exception:
+                logger.exception("Dense retrieval failed")
+                raise_chat_unavailable(
+                    "RETRIEVAL_FAILED",
+                    "Document retrieval is temporarily unavailable. Please try again.",
+                )
+        retrieval_latency_ms = max(0, round((perf_counter() - retrieval_started) * 1000))
 
         try:
             query_id = await self.query_log_writer.record(

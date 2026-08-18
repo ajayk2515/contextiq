@@ -6,6 +6,7 @@ from qdrant_client import AsyncQdrantClient, models
 
 from app.auth.models import UserRole
 from app.config import Settings
+from app.ingestion.embeddings import SparseEmbedding
 from app.vector_store import create_qdrant_client
 
 SUPPORTED_ROLES = frozenset(role.value for role in UserRole)
@@ -19,10 +20,11 @@ class RetrievedChunk:
     page: int | None
     section: str | None
     text: str
+    allowed_roles: tuple[str, ...]
     score: float
 
 
-class DenseRetriever:
+class QdrantRetriever:
     def __init__(self, settings: Settings, client: AsyncQdrantClient | None = None) -> None:
         self.settings = settings
         self.client = client or create_qdrant_client()
@@ -44,7 +46,7 @@ class DenseRetriever:
             ]
         )
 
-    async def search(
+    async def search_dense(
         self, query_vector: list[float], role: str, top_k: int
     ) -> list[RetrievedChunk]:
         collection = self.settings.qdrant_documents_collection
@@ -58,6 +60,50 @@ class DenseRetriever:
             query_filter=self.role_filter(role),
             limit=top_k,
             score_threshold=self.settings.rag_score_threshold,
+            with_payload=True,
+            with_vectors=False,
+        )
+        return [
+            chunk
+            for point in response.points
+            if (chunk := self._to_retrieved_chunk(point.payload, point.score, role)) is not None
+        ]
+
+    async def search_hybrid(
+        self,
+        dense_vector: list[float],
+        sparse_vector: SparseEmbedding,
+        role: str,
+        top_k: int,
+    ) -> list[RetrievedChunk]:
+        collection = self.settings.qdrant_documents_collection
+        if not await self.client.collection_exists(collection):
+            return []
+
+        role_filter = self.role_filter(role)
+        response = await self.client.query_points(
+            collection_name=collection,
+            prefetch=[
+                models.Prefetch(
+                    query=dense_vector,
+                    using="dense",
+                    filter=role_filter,
+                    limit=top_k,
+                    score_threshold=self.settings.rag_score_threshold,
+                ),
+                models.Prefetch(
+                    query=models.SparseVector(
+                        indices=sparse_vector.indices,
+                        values=sparse_vector.values,
+                    ),
+                    using="sparse",
+                    filter=role_filter,
+                    limit=top_k,
+                ),
+            ],
+            query=models.FusionQuery(fusion=models.Fusion.RRF),
+            query_filter=role_filter,
+            limit=top_k,
             with_payload=True,
             with_vectors=False,
         )
@@ -89,6 +135,7 @@ class DenseRetriever:
                 page=int(payload["page"]) if payload.get("page") is not None else None,
                 section=str(payload["section"]) if payload.get("section") is not None else None,
                 text=str(payload["text"]),
+                allowed_roles=tuple(allowed_roles),
                 score=float(score),
             )
         except (KeyError, TypeError, ValueError):

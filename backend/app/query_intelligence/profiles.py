@@ -29,16 +29,16 @@ PROFILE_CONFIGS = {
     RetrievalProfile.BALANCED: RetrievalProfileConfig(
         profile=RetrievalProfile.BALANCED,
         intended_strategy=IntendedRetrievalStrategy.HYBRID,
-        executed_strategy=ExecutedRetrievalStrategy.DENSE_FALLBACK,
+        executed_strategy=ExecutedRetrievalStrategy.HYBRID_RRF,
         candidate_top_k=8,
         reranker_enabled=False,
     ),
     RetrievalProfile.ACCURATE: RetrievalProfileConfig(
         profile=RetrievalProfile.ACCURATE,
         intended_strategy=IntendedRetrievalStrategy.HYBRID_WITH_RERANK,
-        executed_strategy=ExecutedRetrievalStrategy.DENSE_FALLBACK,
+        executed_strategy=ExecutedRetrievalStrategy.HYBRID_RRF,
         candidate_top_k=15,
-        reranker_enabled=True,
+        reranker_enabled=False,
         final_top_k=5,
     ),
 }

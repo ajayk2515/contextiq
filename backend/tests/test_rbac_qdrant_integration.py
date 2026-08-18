@@ -9,7 +9,7 @@ from app.ingestion.embeddings import SparseEmbedding
 from app.ingestion.parser import ParsedChunk
 from app.ingestion.vector_index import DocumentVectorIndex, IndexedChunk
 from app.query_intelligence.domain import QueryCategory, QueryDecision, RetrievalProfile
-from app.rag.retrieval import DenseRetriever
+from app.rag.retrieval import QdrantRetriever
 from app.rag.service import RagService
 
 
@@ -42,7 +42,10 @@ def point(
     }
     return models.PointStruct(
         id=str(point_id),
-        vector={"dense": vector or [1.0, 0.0]},
+        vector={
+            "dense": vector or [1.0, 0.0],
+            "sparse": models.SparseVector(indices=[1], values=[1.0]),
+        },
         payload=payload,
     )
 
@@ -73,7 +76,7 @@ async def test_qdrant_role_filter_enforces_single_multi_and_cross_role_access() 
             ],
             wait=True,
         )
-        retriever = DenseRetriever(settings(collection), client)
+        retriever = QdrantRetriever(settings(collection), client)
         expected = {
             "HR": {"hr.md", "shared.md"},
             "Finance": {"finance.md"},
@@ -82,7 +85,7 @@ async def test_qdrant_role_filter_enforces_single_multi_and_cross_role_access() 
         }
 
         for role, filenames in expected.items():
-            chunks = await retriever.search([1.0, 0.0], role, 10)
+            chunks = await retriever.search_dense([1.0, 0.0], role, 10)
             assert {chunk.filename for chunk in chunks} == filenames
     finally:
         await client.close()
@@ -116,10 +119,10 @@ async def test_same_topic_restricted_chunk_cannot_enter_context_or_citations() -
             wait=True,
         )
         configured = settings(collection)
-        retriever = DenseRetriever(configured, client)
+        retriever = QdrantRetriever(configured, client)
 
-        developer_chunks = await retriever.search([1.0, 0.0], "Developer", 10)
-        hr_chunks = await retriever.search([1.0, 0.0], "HR", 10)
+        developer_chunks = await retriever.search_dense([1.0, 0.0], "Developer", 10)
+        hr_chunks = await retriever.search_dense([1.0, 0.0], "HR", 10)
 
         assert [chunk.chunk_id for chunk in developer_chunks] == [developer_id]
         assert [chunk.chunk_id for chunk in hr_chunks] == [hr_id]
@@ -183,10 +186,13 @@ async def test_retrieval_profiles_never_bypass_qdrant_role_filter() -> None:
         configured = settings(collection)
 
         for category, profile in profiles:
-            retriever = DenseRetriever(configured, client)
+            retriever = QdrantRetriever(configured, client)
             service = RagService(
                 configured,
-                SimpleNamespace(dense=AsyncMock(return_value=[[1.0, 0.0]])),
+                SimpleNamespace(
+                    dense=AsyncMock(return_value=[[1.0, 0.0]]),
+                    sparse=AsyncMock(return_value=[SparseEmbedding(indices=[1], values=[1.0])]),
+                ),
                 retriever,
                 SimpleNamespace(generate=AsyncMock(return_value="The bonus is 17%.")),
                 SimpleNamespace(
@@ -229,7 +235,7 @@ async def test_missing_empty_and_malformed_role_metadata_fail_closed() -> None:
             wait=True,
         )
 
-        retriever = DenseRetriever(settings(collection), client)
+        retriever = QdrantRetriever(settings(collection), client)
         raw_response = await client.query_points(
             collection_name=collection,
             query=[1.0, 0.0],
@@ -238,7 +244,7 @@ async def test_missing_empty_and_malformed_role_metadata_fail_closed() -> None:
             limit=10,
             with_payload=True,
         )
-        chunks = await retriever.search([1.0, 0.0], "HR", 10)
+        chunks = await retriever.search_dense([1.0, 0.0], "HR", 10)
 
         assert {(point.payload or {}).get("filename") for point in raw_response.points} == {
             "valid.md",
@@ -267,7 +273,7 @@ async def test_deleted_document_vectors_are_not_retrievable() -> None:
         for index in (1, 2)
     ]
     index = DocumentVectorIndex(configured, client)
-    retriever = DenseRetriever(configured, client)
+    retriever = QdrantRetriever(configured, client)
     try:
         await create_collection(client, collection)
         await index.replace_document(
@@ -282,12 +288,12 @@ async def test_deleted_document_vectors_are_not_retrievable() -> None:
             ],
         )
 
-        assert len(await retriever.search([1.0, 0.0], "HR", 10)) == 2
-        assert len(await retriever.search([1.0, 0.0], "Executive", 10)) == 2
+        assert len(await retriever.search_dense([1.0, 0.0], "HR", 10)) == 2
+        assert len(await retriever.search_dense([1.0, 0.0], "Executive", 10)) == 2
 
         await index.delete_document(document_id)
 
-        assert await retriever.search([1.0, 0.0], "HR", 10) == []
-        assert await retriever.search([1.0, 0.0], "Executive", 10) == []
+        assert await retriever.search_dense([1.0, 0.0], "HR", 10) == []
+        assert await retriever.search_dense([1.0, 0.0], "Executive", 10) == []
     finally:
         await client.close()

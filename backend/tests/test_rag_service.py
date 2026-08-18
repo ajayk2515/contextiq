@@ -6,6 +6,7 @@ import pytest
 from fastapi import HTTPException
 
 from app.config import Settings
+from app.ingestion.embeddings import SparseEmbedding
 from app.query_intelligence.domain import (
     ExecutedRetrievalStrategy,
     QueryCategory,
@@ -35,6 +36,7 @@ def chunk(text: str = "Employees receive twenty days of annual leave.") -> Retri
         page=None,
         section="Annual Leave",
         text=text,
+        allowed_roles=("HR",),
         score=0.84,
     )
 
@@ -51,8 +53,15 @@ async def test_rag_service_builds_grounded_context_and_real_chunk_citations() ->
     retrieved = chunk()
     user_id = uuid4()
     decision = query_decision()
-    embedding = SimpleNamespace(dense=AsyncMock(return_value=[[0.1, 0.2]]))
-    retriever = SimpleNamespace(search=AsyncMock(return_value=[retrieved]), close=AsyncMock())
+    embedding = SimpleNamespace(
+        dense=AsyncMock(return_value=[[0.1, 0.2]]),
+        sparse=AsyncMock(),
+    )
+    retriever = SimpleNamespace(
+        search_dense=AsyncMock(return_value=[retrieved]),
+        search_hybrid=AsyncMock(),
+        close=AsyncMock(),
+    )
     generator = SimpleNamespace(generate=AsyncMock(return_value="Employees receive 20 days."))
     classifier = SimpleNamespace(classify=AsyncMock(return_value=decision))
     query_log_writer = SimpleNamespace(record=AsyncMock(return_value=uuid4()))
@@ -61,7 +70,9 @@ async def test_rag_service_builds_grounded_context_and_real_chunk_citations() ->
     response = await service.answer("How much annual leave is provided?", user_id, "HR")
 
     classifier.classify.assert_awaited_once_with("How much annual leave is provided?")
-    retriever.search.assert_awaited_once_with([0.1, 0.2], "HR", 3)
+    retriever.search_dense.assert_awaited_once_with([0.1, 0.2], "HR", 3)
+    retriever.search_hybrid.assert_not_awaited()
+    embedding.sparse.assert_not_awaited()
     prompt_context = generator.generate.await_args.args[1]
     assert "[SOURCE 1]" in prompt_context
     assert "Filename: handbook.md" in prompt_context
@@ -90,8 +101,16 @@ async def test_rag_service_returns_deterministic_insufficient_context_without_ll
         RetrievalProfile.BALANCED,
         used_fallback=True,
     )
-    embedding = SimpleNamespace(dense=AsyncMock(return_value=[[0.1, 0.2]]))
-    retriever = SimpleNamespace(search=AsyncMock(return_value=[]), close=AsyncMock())
+    sparse = SparseEmbedding(indices=[4], values=[0.7])
+    embedding = SimpleNamespace(
+        dense=AsyncMock(return_value=[[0.1, 0.2]]),
+        sparse=AsyncMock(return_value=[sparse]),
+    )
+    retriever = SimpleNamespace(
+        search_dense=AsyncMock(),
+        search_hybrid=AsyncMock(return_value=[]),
+        close=AsyncMock(),
+    )
     generator = SimpleNamespace(generate=AsyncMock())
     classifier = SimpleNamespace(classify=AsyncMock(return_value=decision))
     query_log_writer = SimpleNamespace(record=AsyncMock(return_value=uuid4()))
@@ -104,10 +123,11 @@ async def test_rag_service_returns_deterministic_insufficient_context_without_ll
     assert response.sources == []
     assert response.query_intelligence.profile == RetrievalProfile.BALANCED
     assert response.query_intelligence.candidate_top_k == 8
-    assert response.query_intelligence.executed_strategy == (
-        ExecutedRetrievalStrategy.DENSE_FALLBACK
-    )
+    assert response.query_intelligence.executed_strategy == (ExecutedRetrievalStrategy.HYBRID_RRF)
     assert response.query_intelligence.classification_fallback is True
+    embedding.sparse.assert_awaited_once_with(["What is the moon office policy?"])
+    retriever.search_dense.assert_not_awaited()
+    retriever.search_hybrid.assert_awaited_once_with([0.1, 0.2], sparse, "Developer", 8)
     generator.generate.assert_not_awaited()
 
 
@@ -119,13 +139,13 @@ async def test_rag_service_returns_deterministic_insufficient_context_without_ll
             QueryCategory.SPECIFIC_SEARCH,
             RetrievalProfile.BALANCED,
             8,
-            ExecutedRetrievalStrategy.DENSE_FALLBACK,
+            ExecutedRetrievalStrategy.HYBRID_RRF,
         ),
         (
             QueryCategory.MULTI_DOC_COMPARISON,
             RetrievalProfile.ACCURATE,
             15,
-            ExecutedRetrievalStrategy.DENSE_FALLBACK,
+            ExecutedRetrievalStrategy.HYBRID_RRF,
         ),
     ],
 )
@@ -135,8 +155,16 @@ async def test_rag_service_applies_profile_top_k_and_reports_actual_strategy(
     top_k: int,
     strategy: ExecutedRetrievalStrategy,
 ) -> None:
-    embedding = SimpleNamespace(dense=AsyncMock(return_value=[[0.1, 0.2]]))
-    retriever = SimpleNamespace(search=AsyncMock(return_value=[]), close=AsyncMock())
+    sparse = SparseEmbedding(indices=[4], values=[0.7])
+    embedding = SimpleNamespace(
+        dense=AsyncMock(return_value=[[0.1, 0.2]]),
+        sparse=AsyncMock(return_value=[sparse]),
+    )
+    retriever = SimpleNamespace(
+        search_dense=AsyncMock(return_value=[]),
+        search_hybrid=AsyncMock(return_value=[]),
+        close=AsyncMock(),
+    )
     classifier = SimpleNamespace(classify=AsyncMock(return_value=query_decision(category, profile)))
     query_log_writer = SimpleNamespace(record=AsyncMock(return_value=uuid4()))
     service = RagService(
@@ -150,7 +178,14 @@ async def test_rag_service_applies_profile_top_k_and_reports_actual_strategy(
 
     response = await service.answer("Question", uuid4(), "Executive")
 
-    retriever.search.assert_awaited_once_with([0.1, 0.2], "Executive", top_k)
+    if profile == RetrievalProfile.FAST:
+        retriever.search_dense.assert_awaited_once_with([0.1, 0.2], "Executive", top_k)
+        retriever.search_hybrid.assert_not_awaited()
+        embedding.sparse.assert_not_awaited()
+    else:
+        embedding.sparse.assert_awaited_once_with(["Question"])
+        retriever.search_dense.assert_not_awaited()
+        retriever.search_hybrid.assert_awaited_once_with([0.1, 0.2], sparse, "Executive", top_k)
     assert response.query_intelligence.candidate_top_k == top_k
     assert response.query_intelligence.executed_strategy == strategy
 
@@ -173,13 +208,15 @@ async def test_rag_service_maps_provider_failures_to_safe_errors(
         dense=AsyncMock(
             side_effect=embedding_result if isinstance(embedding_result, Exception) else None,
             return_value=embedding_result,
-        )
+        ),
+        sparse=AsyncMock(),
     )
     retriever = SimpleNamespace(
-        search=AsyncMock(
+        search_dense=AsyncMock(
             side_effect=retrieval_result if isinstance(retrieval_result, Exception) else None,
             return_value=retrieval_result,
         ),
+        search_hybrid=AsyncMock(),
         close=AsyncMock(),
     )
     generator = SimpleNamespace(
@@ -199,11 +236,68 @@ async def test_rag_service_maps_provider_failures_to_safe_errors(
     assert error.value.detail["code"] == expected_code
 
 
+@pytest.mark.parametrize(
+    ("sparse_result", "hybrid_result", "expected_code"),
+    [
+        (RuntimeError("bm25 unavailable"), [], "SPARSE_QUERY_FAILED"),
+        (
+            [SparseEmbedding(indices=[4], values=[0.7])],
+            RuntimeError("fusion unavailable"),
+            "HYBRID_RETRIEVAL_FAILED",
+        ),
+    ],
+)
+async def test_rag_service_maps_hybrid_failures_to_safe_errors(
+    sparse_result: object,
+    hybrid_result: object,
+    expected_code: str,
+) -> None:
+    embedding = SimpleNamespace(
+        dense=AsyncMock(return_value=[[0.1, 0.2]]),
+        sparse=AsyncMock(
+            side_effect=sparse_result if isinstance(sparse_result, Exception) else None,
+            return_value=sparse_result,
+        ),
+    )
+    retriever = SimpleNamespace(
+        search_dense=AsyncMock(),
+        search_hybrid=AsyncMock(
+            side_effect=hybrid_result if isinstance(hybrid_result, Exception) else None,
+            return_value=hybrid_result,
+        ),
+        close=AsyncMock(),
+    )
+    service = RagService(
+        settings(),
+        embedding,
+        retriever,
+        SimpleNamespace(generate=AsyncMock()),
+        SimpleNamespace(
+            classify=AsyncMock(
+                return_value=query_decision(
+                    QueryCategory.SPECIFIC_SEARCH, RetrievalProfile.BALANCED
+                )
+            )
+        ),
+        SimpleNamespace(record=AsyncMock(return_value=uuid4())),
+    )
+
+    with pytest.raises(HTTPException) as error:
+        await service.answer("Question", uuid4(), "HR")
+
+    assert error.value.status_code == 503
+    assert error.value.detail["code"] == expected_code
+
+
 async def test_rag_service_maps_query_log_failure_to_safe_error() -> None:
     service = RagService(
         settings(),
-        SimpleNamespace(dense=AsyncMock(return_value=[[0.1, 0.2]])),
-        SimpleNamespace(search=AsyncMock(return_value=[]), close=AsyncMock()),
+        SimpleNamespace(dense=AsyncMock(return_value=[[0.1, 0.2]]), sparse=AsyncMock()),
+        SimpleNamespace(
+            search_dense=AsyncMock(return_value=[]),
+            search_hybrid=AsyncMock(),
+            close=AsyncMock(),
+        ),
         SimpleNamespace(generate=AsyncMock()),
         SimpleNamespace(classify=AsyncMock(return_value=query_decision())),
         SimpleNamespace(record=AsyncMock(side_effect=RuntimeError("database unavailable"))),

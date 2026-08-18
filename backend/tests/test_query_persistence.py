@@ -59,7 +59,7 @@ async def test_query_log_writer_persists_routing_metadata() -> None:
     assert item.query_text == "Compare the policies"
     assert item.query_category == "MULTI_DOC_COMPARISON"
     assert item.retrieval_profile == "ACCURATE"
-    assert item.retrieval_strategy == "DENSE_FALLBACK"
+    assert item.retrieval_strategy == "HYBRID_RRF"
     assert item.classifier_fallback is False
     assert item.retrieval_latency_ms == 24
     assert isinstance(item.id, UUID)

@@ -31,7 +31,7 @@ class QueryLog(Base):
             name="ck_query_logs_profile",
         ),
         CheckConstraint(
-            "retrieval_strategy IN ('DENSE', 'DENSE_FALLBACK')",
+            "retrieval_strategy IN ('DENSE', 'DENSE_FALLBACK', 'HYBRID_RRF')",
             name="ck_query_logs_strategy",
         ),
         CheckConstraint("retrieval_latency_ms >= 0", name="ck_query_logs_retrieval_latency"),

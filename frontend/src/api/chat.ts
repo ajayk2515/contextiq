@@ -19,7 +19,7 @@ export interface QueryIntelligenceMetadata {
   category: QueryCategory
   profile: RetrievalProfile
   intended_strategy: 'DENSE' | 'HYBRID' | 'HYBRID_WITH_RERANK'
-  executed_strategy: 'DENSE' | 'DENSE_FALLBACK'
+  executed_strategy: 'DENSE' | 'HYBRID_RRF'
   candidate_top_k: number
   classification_fallback: boolean
 }
