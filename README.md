@@ -2,7 +2,7 @@
 
 Enterprise Knowledge Intelligence Platform (EKIP) is a full-stack AI/RAG MVP. The application is being built phase by phase according to [`PROJECT_SPEC.md`](PROJECT_SPEC.md).
 
-The current implementation provides the local Vue, FastAPI, PostgreSQL, and Qdrant foundation, email/password authentication for the four demo roles, role-aware document ingestion, and grounded question answering with citations and adaptive query routing.
+The current implementation provides the local Vue, FastAPI, PostgreSQL, and Qdrant foundation, email/password authentication for the four demo roles, role-aware document ingestion, grounded adaptive retrieval, SSE answer streaming, and persistent conversations with historical citation snapshots.
 
 ## Prerequisites
 
@@ -20,7 +20,7 @@ Copy-Item .env.example .env
 
 The defaults are intended only for local development. Change credentials and service URLs through environment variables rather than editing application code.
 
-Document ingestion and chat require `OPENAI_API_KEY`. Upload limits, chunk size and overlap, embedding, chat, and reranker models, retrieval score threshold, context size, answer size, and the Qdrant collection name are configurable in `.env`. Retrieval Top-K values are centralized in the FAST, BALANCED, and ACCURATE profile definitions.
+Document ingestion and chat require `OPENAI_API_KEY`. Upload limits, chunk size and overlap, embedding, chat, and reranker models, retrieval score threshold, context size, answer size, conversation-history message limit, and the Qdrant collection name are configurable in `.env`. Retrieval Top-K values are centralized in the FAST, BALANCED, and ACCURATE profile definitions.
 
 ## Local Infrastructure
 
@@ -81,6 +81,10 @@ After signing in, open `http://localhost:5173/documents` to upload a PDF, DOCX, 
 
 Open `http://localhost:5173/chat` to ask a question against indexed documents available to the authenticated role. Query Intelligence classifies the question as FAQ, specific search, multi-document comparison, summarization, or restricted data, then selects the centralized FAST, BALANCED, or ACCURATE retrieval profile. FAST executes dense Top-K 3. BALANCED executes dense and BM25 sparse retrieval with native Qdrant RRF and returns Top-K 8. ACCURATE retrieves 15 hybrid RRF candidates, reranks them locally with `BAAI/bge-reranker-base`, and supplies only the final Top-K 5 to answer generation. The user's server-resolved role is applied to both Qdrant prefetches before fusion and reranking. Responses include the executed strategy and citations derived from the final authorized chunks supplied as bounded context.
 
+Conversations and messages are persisted in PostgreSQL. The chat workspace lists only the signed-in user's recent conversations, loads message history on selection, derives the title from the first user message, and restores each assistant message with its original JSONB citation snapshot. The current message always runs through retrieval; up to `CHAT_HISTORY_MESSAGE_LIMIT` recent messages are supplied only as conversational generation context and are never treated as authoritative document evidence.
+
+`POST /api/chat/stream` returns standard `text/event-stream` output in this order: `metadata`, incremental `token` events, `citations`, then `complete`. If generation fails after streaming begins, it emits a safe `error` event. User messages are committed before retrieval, while completed assistant messages are committed once after successful generation, avoiding a database transaction across the OpenAI stream. The original non-streaming `POST /api/chat` endpoint remains available through the same RAG preparation path.
+
 Each chat request records its authenticated user, query, classification, selected profile, actual execution strategy, fallback status, and retrieval latency in PostgreSQL. Retrieval latency covers query representations and retrieval, plus reranking for ACCURATE. Apply the latest Alembic migration before using the current chat behavior.
 
 The first ACCURATE query downloads the CPU-compatible FastEmbed BGE reranker model into the local model cache. Later requests reuse the same process-wide model instance.
@@ -123,6 +127,19 @@ $answer = Invoke-RestMethod -Method Post `
 
 $answer
 ```
+
+Conversation endpoints require the same bearer token:
+
+```powershell
+$conversation = Invoke-RestMethod -Method Post `
+  -Uri http://localhost:8000/api/conversations `
+  -Headers @{ Authorization = "Bearer $($login.access_token)" }
+
+Invoke-RestMethod -Uri http://localhost:8000/api/conversations `
+  -Headers @{ Authorization = "Bearer $($login.access_token)" }
+```
+
+The Vue client consumes the authenticated streaming endpoint with `fetch` and a `ReadableStream`, because the request is a `POST` with an authorization header rather than a native `EventSource` request.
 
 Run frontend checks:
 

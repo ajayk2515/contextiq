@@ -14,7 +14,11 @@ from app.query_intelligence.domain import (
     RetrievalProfile,
 )
 from app.query_intelligence.profiles import profile_config
-from app.rag.prompting import INSUFFICIENT_CONTEXT_ANSWER, build_context
+from app.rag.prompting import (
+    INSUFFICIENT_CONTEXT_ANSWER,
+    ConversationHistoryMessage,
+    build_context,
+)
 from app.rag.reranking import RerankerService
 from app.rag.retrieval import RetrievedChunk
 from app.rag.service import RagService
@@ -418,3 +422,56 @@ def test_context_builder_preserves_boundaries_and_respects_limit() -> None:
 
     assert context == first_context
     assert included == [first]
+
+
+async def test_accurate_streaming_uses_shared_reranked_top_five_and_history() -> None:
+    candidates = [chunk(f"Candidate {index}", f"candidate-{index}.md") for index in range(7)]
+    reranked = candidates[1:6]
+    reranker = SimpleNamespace(rerank=AsyncMock(return_value=reranked))
+
+    streamed_history: list[ConversationHistoryMessage] = []
+
+    async def token_stream(
+        _question: str,
+        _context: str,
+        received_history: list[ConversationHistoryMessage],
+    ):
+        streamed_history.extend(received_history)
+        yield "Grounded comparison"
+
+    generator = SimpleNamespace(generate=AsyncMock(), stream=token_stream)
+    service = RagService(
+        settings(),
+        SimpleNamespace(
+            dense=AsyncMock(return_value=[[0.1, 0.2]]),
+            sparse=AsyncMock(return_value=[SparseEmbedding(indices=[4], values=[0.7])]),
+        ),
+        SimpleNamespace(
+            search_dense=AsyncMock(),
+            search_hybrid=AsyncMock(return_value=candidates),
+            close=AsyncMock(),
+        ),
+        generator,
+        SimpleNamespace(
+            classify=AsyncMock(
+                return_value=query_decision(
+                    QueryCategory.MULTI_DOC_COMPARISON,
+                    RetrievalProfile.ACCURATE,
+                )
+            )
+        ),
+        SimpleNamespace(record=AsyncMock(return_value=uuid4())),
+        reranker,
+    )
+    history = [ConversationHistoryMessage(role="assistant", content="Earlier grounded answer")]
+
+    prepared = await service.prepare("Compare the policies", uuid4(), "HR")
+    tokens = [token async for token in service.stream(prepared, history)]
+
+    reranker.rerank.assert_awaited_once_with("Compare the policies", candidates, 5)
+    assert prepared.query_intelligence.executed_strategy == (
+        ExecutedRetrievalStrategy.HYBRID_RRF_RERANK
+    )
+    assert len(prepared.sources) == 5
+    assert tokens == ["Grounded comparison"]
+    assert streamed_history == history

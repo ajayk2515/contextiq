@@ -24,6 +24,10 @@ class ChatRequest(BaseModel):
         return message
 
 
+class ChatStreamRequest(ChatRequest):
+    conversation_id: UUID
+
+
 class ChatSource(BaseModel):
     document_id: UUID
     chunk_id: UUID
@@ -48,3 +52,22 @@ class ChatResponse(BaseModel):
     sources: list[ChatSource]
     insufficient_context: bool
     query_intelligence: QueryIntelligenceMetadata
+
+
+class TokenEvent(BaseModel):
+    text: str
+
+
+class CitationsEvent(BaseModel):
+    sources: list[ChatSource]
+
+
+class CompleteEvent(BaseModel):
+    query_id: UUID
+    assistant_message_id: UUID
+    insufficient_context: bool
+
+
+class StreamErrorEvent(BaseModel):
+    code: str
+    message: str

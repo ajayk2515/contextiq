@@ -1,4 +1,6 @@
 import logging
+from collections.abc import AsyncIterator, Sequence
+from dataclasses import dataclass
 from time import perf_counter
 from uuid import UUID
 
@@ -10,12 +12,25 @@ from app.query_intelligence.persistence import QueryLogWriter
 from app.query_intelligence.profiles import RetrievalProfileConfig, profile_config
 from app.rag.errors import raise_chat_unavailable
 from app.rag.generation import AnswerGenerator
-from app.rag.prompting import INSUFFICIENT_CONTEXT_ANSWER, build_context
+from app.rag.prompting import (
+    INSUFFICIENT_CONTEXT_ANSWER,
+    ConversationHistoryMessage,
+    build_context,
+)
 from app.rag.reranking import RerankerService
 from app.rag.retrieval import QdrantRetriever, RetrievedChunk
 from app.rag.schemas import ChatResponse, ChatSource, QueryIntelligenceMetadata
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class PreparedAnswer:
+    question: str
+    context: str
+    sources: list[ChatSource]
+    insufficient_context: bool
+    query_intelligence: QueryIntelligenceMetadata
 
 
 def _snippet(text: str, maximum_characters: int = 320) -> str:
@@ -71,7 +86,7 @@ class RagService:
         self.query_log_writer = query_log_writer or QueryLogWriter()
         self.reranker = reranker or RerankerService(settings)
 
-    async def answer(self, question: str, user_id: UUID, role: str) -> ChatResponse:
+    async def prepare(self, question: str, user_id: UUID, role: str) -> PreparedAnswer:
         decision = await self.classifier.classify(question)
         profile = profile_config(decision.profile)
         retrieval_started = perf_counter()
@@ -156,29 +171,58 @@ class RagService:
 
         metadata = _query_metadata(query_id, decision, profile)
         context, included_chunks = build_context(chunks, self.settings.rag_max_context_chars)
-        if not included_chunks:
-            return ChatResponse(
-                answer=INSUFFICIENT_CONTEXT_ANSWER,
-                sources=[],
-                insufficient_context=True,
-                query_intelligence=metadata,
-            )
+        return PreparedAnswer(
+            question=question,
+            context=context,
+            sources=[_source(chunk) for chunk in included_chunks],
+            insufficient_context=not included_chunks,
+            query_intelligence=metadata,
+        )
 
+    async def answer(
+        self,
+        question: str,
+        user_id: UUID,
+        role: str,
+        history: Sequence[ConversationHistoryMessage] = (),
+    ) -> ChatResponse:
+        prepared = await self.prepare(question, user_id, role)
+        if prepared.insufficient_context:
+            answer = INSUFFICIENT_CONTEXT_ANSWER
+        else:
+            try:
+                answer = await self.generator.generate(question, prepared.context, history)
+            except Exception:
+                logger.exception("Grounded answer generation failed")
+                raise_chat_unavailable(
+                    "ANSWER_GENERATION_FAILED",
+                    "The answer could not be generated. Please try again.",
+                )
+
+        return ChatResponse(
+            answer=answer,
+            sources=prepared.sources,
+            insufficient_context=prepared.insufficient_context,
+            query_intelligence=prepared.query_intelligence,
+        )
+
+    async def stream(
+        self,
+        prepared: PreparedAnswer,
+        history: Sequence[ConversationHistoryMessage] = (),
+    ) -> AsyncIterator[str]:
+        if prepared.insufficient_context:
+            yield INSUFFICIENT_CONTEXT_ANSWER
+            return
         try:
-            answer = await self.generator.generate(question, context)
+            async for token in self.generator.stream(prepared.question, prepared.context, history):
+                yield token
         except Exception:
-            logger.exception("Grounded answer generation failed")
+            logger.exception("Grounded answer streaming failed")
             raise_chat_unavailable(
                 "ANSWER_GENERATION_FAILED",
                 "The answer could not be generated. Please try again.",
             )
-
-        return ChatResponse(
-            answer=answer,
-            sources=[_source(chunk) for chunk in included_chunks],
-            insufficient_context=False,
-            query_intelligence=metadata,
-        )
 
     async def close(self) -> None:
         await self.retriever.close()

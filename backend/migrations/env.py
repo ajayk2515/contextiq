@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from app.auth import models as auth_models  # noqa: F401
 from app.config import get_settings
+from app.conversations import models as conversation_models  # noqa: F401
 from app.database import Base
 from app.documents import models as document_models  # noqa: F401
 from app.query_intelligence import models as query_intelligence_models  # noqa: F401

@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     rag_score_threshold: float = Field(default=0.35, ge=-1, le=1)
     rag_max_context_chars: int = Field(default=12000, ge=1000, le=50000)
     rag_max_answer_tokens: int = Field(default=600, ge=100, le=2000)
+    chat_history_message_limit: int = Field(default=8, ge=1, le=20)
     max_upload_size_mb: int = Field(default=25, gt=0, le=100)
     chunk_size: int = Field(default=800, ge=200, le=2000)
     chunk_overlap: int = Field(default=120, ge=0, le=500)

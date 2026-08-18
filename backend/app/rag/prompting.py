@@ -1,3 +1,7 @@
+from collections.abc import Sequence
+from dataclasses import dataclass
+from typing import Literal
+
 from app.rag.retrieval import RetrievedChunk
 
 SYSTEM_PROMPT = """You answer questions using only the retrieved document context provided.
@@ -12,6 +16,12 @@ INSUFFICIENT_CONTEXT_ANSWER = (
     "I couldn't find enough information in the documents available to your account "
     "to answer this confidently."
 )
+
+
+@dataclass(frozen=True)
+class ConversationHistoryMessage:
+    role: Literal["user", "assistant"]
+    content: str
 
 
 def _source_text(index: int, chunk: RetrievedChunk) -> str:
@@ -44,3 +54,17 @@ def build_context(
 
 def build_user_prompt(question: str, context: str) -> str:
     return f"Question:\n{question}\n\nRetrieved context:\n{context}"
+
+
+def build_response_input(
+    question: str,
+    context: str,
+    history: Sequence[ConversationHistoryMessage] = (),
+) -> str | list[dict[str, str]]:
+    current_question = build_user_prompt(question, context)
+    if not history:
+        return current_question
+    return [
+        *[{"role": message.role, "content": message.content} for message in history],
+        {"role": "user", "content": current_question},
+    ]

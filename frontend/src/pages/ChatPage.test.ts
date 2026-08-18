@@ -2,16 +2,85 @@ import { createPinia, setActivePinia } from 'pinia'
 import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { askQuestion } from '@/api/chat'
+import { streamQuestion } from '@/api/chat'
 import { ApiError } from '@/api/client'
+import {
+  createConversation,
+  deleteConversation,
+  fetchConversation,
+  fetchConversations,
+  type ConversationDetail,
+  type ConversationSummary,
+} from '@/api/conversations'
 import { useAuthStore } from '@/stores/auth'
 
 import ChatPage from './ChatPage.vue'
 
 vi.mock('@/api/chat', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/api/chat')>()
-  return { ...actual, askQuestion: vi.fn() }
+  return { ...actual, streamQuestion: vi.fn() }
 })
+
+vi.mock('@/api/conversations', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/api/conversations')>()
+  return {
+    ...actual,
+    createConversation: vi.fn(),
+    deleteConversation: vi.fn(),
+    fetchConversation: vi.fn(),
+    fetchConversations: vi.fn(),
+  }
+})
+
+const summary: ConversationSummary = {
+  id: 'conversation-1',
+  title: 'Leave policy',
+  created_at: '2026-08-18T10:00:00Z',
+  updated_at: '2026-08-18T10:01:00Z',
+}
+
+const detail: ConversationDetail = {
+  ...summary,
+  messages: [
+    {
+      id: 'message-1',
+      role: 'USER',
+      content: 'What is annual leave?',
+      query_id: null,
+      query_intelligence: null,
+      sources: [],
+      insufficient_context: false,
+      created_at: '2026-08-18T10:00:00Z',
+    },
+    {
+      id: 'message-2',
+      role: 'ASSISTANT',
+      content: 'Employees receive twenty days.',
+      query_id: 'query-1',
+      query_intelligence: {
+        query_id: 'query-1',
+        category: 'FAQ',
+        profile: 'FAST',
+        intended_strategy: 'DENSE',
+        executed_strategy: 'DENSE',
+        candidate_top_k: 3,
+        classification_fallback: false,
+      },
+      sources: [
+        {
+          document_id: 'document-1',
+          chunk_id: 'chunk-1',
+          filename: 'handbook.md',
+          page: null,
+          section: 'Annual Leave',
+          snippet: 'Employees receive twenty days.',
+        },
+      ],
+      insufficient_context: false,
+      created_at: '2026-08-18T10:01:00Z',
+    },
+  ],
+}
 
 function mountPage() {
   return mount(ChatPage, { global: { stubs: { AppHeader: true } } })
@@ -28,120 +97,112 @@ describe('ChatPage', () => {
       role: 'HR',
     }
     vi.clearAllMocks()
+    vi.mocked(fetchConversations).mockResolvedValue([summary])
+    vi.mocked(fetchConversation).mockResolvedValue(detail)
+    vi.mocked(createConversation).mockResolvedValue({
+      ...summary,
+      id: 'conversation-2',
+      title: 'New conversation',
+    })
+    vi.mocked(deleteConversation).mockResolvedValue()
   })
 
-  it('renders an answer and source metadata with an optional page', async () => {
-    vi.mocked(askQuestion).mockResolvedValue({
-      answer: 'Employees receive twenty days of annual leave.',
-      insufficient_context: false,
-      query_intelligence: {
-        query_id: 'e8789c91-e6bd-42a8-9dfb-326955bad3ee',
-        category: 'FAQ',
-        profile: 'FAST',
-        intended_strategy: 'DENSE',
-        executed_strategy: 'DENSE',
-        candidate_top_k: 3,
-        classification_fallback: false,
-      },
-      sources: [
-        {
-          document_id: '2418ac1e-d459-4a62-b3a7-a9228120a6bb',
-          chunk_id: '16d67b2f-5c12-4330-99bf-810ec86f8266',
-          filename: 'handbook.md',
-          page: null,
-          section: 'Annual Leave',
-          snippet: 'Employees receive twenty days of annual leave.',
-        },
-      ],
-    })
+  it('renders recent conversations and restored message citations', async () => {
     const wrapper = mountPage()
-
-    await wrapper.get('textarea').setValue('How much annual leave is provided?')
-    await wrapper.get('form').trigger('submit')
     await flushPromises()
 
-    expect(askQuestion).toHaveBeenCalledWith('signed-token', 'How much annual leave is provided?')
-    expect(wrapper.text()).toContain('Employees receive twenty days of annual leave.')
+    expect(fetchConversations).toHaveBeenCalledWith('signed-token')
+    expect(fetchConversation).toHaveBeenCalledWith('signed-token', 'conversation-1')
+    expect(wrapper.text()).toContain('Leave policy')
+    expect(wrapper.text()).toContain('Employees receive twenty days.')
     expect(wrapper.text()).toContain('[1] handbook.md \u00b7 Annual Leave')
-    expect(wrapper.get('[aria-label="Query routing"]').text()).toContain(
-      'FAQ · FAST · Dense · Top 3',
-    )
   })
 
-  it('shows the loading and insufficient-context states', async () => {
-    let resolveRequest: ((value: Awaited<ReturnType<typeof askQuestion>>) => void) | undefined
-    vi.mocked(askQuestion).mockReturnValue(
-      new Promise((resolve) => {
-        resolveRequest = resolve
-      }),
-    )
+  it('creates a new empty conversation from New Chat', async () => {
     const wrapper = mountPage()
-
-    await wrapper.get('textarea').setValue('Unknown topic')
-    await wrapper.get('form').trigger('submit')
-    expect(wrapper.text()).toContain('Searching authorized documents')
-
-    resolveRequest?.({
-      answer: "I couldn't find enough information.",
-      sources: [],
-      insufficient_context: true,
-      query_intelligence: {
-        query_id: '3cd386aa-870e-44f3-99a3-86808a31016a',
-        category: 'SPECIFIC_SEARCH',
-        profile: 'BALANCED',
-        intended_strategy: 'HYBRID',
-        executed_strategy: 'HYBRID_RRF',
-        candidate_top_k: 8,
-        classification_fallback: true,
-      },
-    })
     await flushPromises()
 
-    expect(wrapper.text()).toContain('Insufficient context')
-    expect(wrapper.text()).toContain("I couldn't find enough information.")
-    expect(wrapper.get('[aria-label="Query routing"]').text()).toContain(
-      'Specific Search · BALANCED · Hybrid RRF · Top 8',
-    )
-  })
-
-  it('shows safe API errors', async () => {
-    vi.mocked(askQuestion).mockRejectedValue(
-      new ApiError('Document retrieval is temporarily unavailable.', 503, 'RETRIEVAL_FAILED'),
-    )
-    const wrapper = mountPage()
-
-    await wrapper.get('textarea').setValue('Question')
-    await wrapper.get('form').trigger('submit')
+    await wrapper.get('button').trigger('click')
     await flushPromises()
 
-    expect(wrapper.get('[role="alert"]').text()).toBe(
-      'Document retrieval is temporarily unavailable.',
-    )
+    expect(createConversation).toHaveBeenCalledWith('signed-token')
+    expect(wrapper.text()).toContain('New conversation')
+    expect(wrapper.text()).toContain('Start a conversation')
   })
 
-  it('displays the executed reranking strategy for accurate queries', async () => {
-    vi.mocked(askQuestion).mockResolvedValue({
-      answer: 'The policies differ in duration and eligibility.',
-      insufficient_context: false,
-      query_intelligence: {
-        query_id: '405f0c0f-0d6d-4a2c-a9b3-b70c59b07a44',
+  it('appends streamed tokens and attaches sources to the assistant message', async () => {
+    vi.mocked(streamQuestion).mockImplementation(async (_token, _id, _message, handlers) => {
+      handlers.onMetadata({
+        query_id: 'query-2',
         category: 'MULTI_DOC_COMPARISON',
         profile: 'ACCURATE',
         intended_strategy: 'HYBRID_WITH_RERANK',
         executed_strategy: 'HYBRID_RRF_RERANK',
         candidate_top_k: 15,
         classification_fallback: false,
-      },
-      sources: [],
+      })
+      handlers.onToken('The policies ')
+      handlers.onToken('differ.')
+      handlers.onCitations([
+        {
+          document_id: 'document-2',
+          chunk_id: 'chunk-2',
+          filename: 'benefits.md',
+          page: null,
+          section: 'Parental Leave',
+          snippet: 'Sixteen weeks.',
+        },
+      ])
+      handlers.onComplete({
+        query_id: 'query-2',
+        assistant_message_id: 'message-4',
+        insufficient_context: false,
+      })
     })
     const wrapper = mountPage()
+    await flushPromises()
 
-    await wrapper.get('textarea').setValue('Compare the policies')
+    await wrapper.get('textarea').setValue('Compare the leave policies')
     await wrapper.get('form').trigger('submit')
     await flushPromises()
 
-    expect(wrapper.get('[aria-label="Query routing"]').text()).toContain(
-      'Multi Doc Comparison · ACCURATE · Hybrid RRF Reranker · Top 15',
+    expect(streamQuestion).toHaveBeenCalledWith(
+      'signed-token',
+      'conversation-1',
+      'Compare the leave policies',
+      expect.any(Object),
     )
+    expect(wrapper.text()).toContain('The policies differ.')
+    expect(wrapper.text()).toContain('[1] benefits.md \u00b7 Parental Leave')
+    expect(wrapper.text()).toContain(
+      'Multi Doc Comparison \u00b7 ACCURATE \u00b7 Hybrid RRF Reranker \u00b7 Top 15',
+    )
+  })
+
+  it('shows stream errors and reloads persisted server history', async () => {
+    vi.mocked(streamQuestion).mockRejectedValue(
+      new ApiError('Unable to generate a response.', 503, 'ANSWER_GENERATION_FAILED'),
+    )
+    const wrapper = mountPage()
+    await flushPromises()
+
+    await wrapper.get('textarea').setValue('Question')
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+
+    expect(wrapper.get('[role="alert"]').text()).toBe('Unable to generate a response.')
+    expect(fetchConversation).toHaveBeenCalledTimes(2)
+  })
+
+  it('deletes the active conversation after confirmation', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const wrapper = mountPage()
+    await flushPromises()
+
+    await wrapper.get('[aria-label="Delete Leave policy"]').trigger('click')
+    await flushPromises()
+
+    expect(deleteConversation).toHaveBeenCalledWith('signed-token', 'conversation-1')
+    expect(wrapper.text()).toContain('Start a conversation')
   })
 })

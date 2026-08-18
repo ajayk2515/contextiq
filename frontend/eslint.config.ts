@@ -14,7 +14,9 @@ export default tseslint.config(
     languageOptions: {
       globals: {
         AbortController: 'readonly',
+        HTMLElement: 'readonly',
         sessionStorage: 'readonly',
+        window: 'readonly',
       },
       parserOptions: {
         parser: tseslint.parser,
