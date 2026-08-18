@@ -333,7 +333,7 @@ Do not introduce SPLADE unless there is a strong reason.
 
 ## Reranker
 
-Use a BGE cross-encoder reranker.
+Use a configurable local cross-encoder reranker.
 
 Prefer an implementation available through FastEmbed or another simple supported library.
 
@@ -1132,7 +1132,7 @@ Cross-Encoder Reranker
 Top 5
 ```
 
-Use a BGE reranker.
+Use a configurable local cross-encoder reranker.
 
 Prefer a simple local library integration.
 
@@ -2601,7 +2601,7 @@ Validate against:
 
 Implement:
 
-- BGE cross-encoder reranker
+- local cross-encoder reranker
 - ACCURATE profile integration
 - initial candidate ranking
 - final candidate ranking

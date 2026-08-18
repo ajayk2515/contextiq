@@ -13,7 +13,7 @@ analytics.
 
 This repository contains a complete local MVP through Phase 12 of
 [`PROJECT_SPEC.md`](PROJECT_SPEC.md). The application runs locally with Vue 3, FastAPI, PostgreSQL,
-Qdrant, OpenAI, Docling, FastEmbed, a local BGE reranker, and RAGAS. Cloud deployment is explicitly
+Qdrant, OpenAI, Docling, FastEmbed, a local MiniLM reranker, and RAGAS. Cloud deployment is explicitly
 reserved for Phase 13 and has not been configured.
 
 ## At A Glance
@@ -24,7 +24,7 @@ reserved for Phase 13 and has not been configured.
 | Ingestion      | Docling parsing, token-aware chunking, dense and sparse vectors               |
 | Retrieval      | Adaptive FAST, BALANCED, and ACCURATE profiles                                |
 | Search         | Dense similarity, BM25-style sparse retrieval, native Qdrant RRF              |
-| Ranking        | Local `BAAI/bge-reranker-base` cross-encoder for ACCURATE queries             |
+| Ranking        | Local `Xenova/ms-marco-MiniLM-L-6-v2` cross-encoder for ACCURATE queries      |
 | Grounding      | Bounded authorized context, citations, insufficient-context behavior          |
 | Conversations  | PostgreSQL persistence with SSE answer streaming                              |
 | Explainability | User-scoped Retrieval Inspector with immutable candidate snapshots            |
@@ -150,7 +150,7 @@ flowchart TB
     QI --> OpenAI[OpenAI API]
     RAG --> OpenAI
     Eval --> OpenAI
-    Ingest --> LocalModels[Docling / FastEmbed / BGE reranker]
+    Ingest --> LocalModels[Docling / FastEmbed / MiniLM reranker]
     RAG --> LocalModels
 
     PostgreSQL --> Metrics
@@ -175,7 +175,7 @@ discovery, distributed transactions, or operational overhead that the MVP does n
 | OpenAI       | Dense embeddings, Query Intelligence, grounded answer generation, RAGAS judge models |
 | Docling      | Structured parsing for PDF, DOCX, PPTX, and Markdown                                 |
 | FastEmbed    | Sparse document and query representations                                            |
-| BGE reranker | Local cross-encoder reranking for ACCURATE requests                                  |
+| MiniLM reranker | Local cross-encoder reranking for ACCURATE requests                               |
 | RAGAS        | Faithfulness, Answer Relevancy, Context Precision, Context Recall                    |
 
 ## End-to-End Flows
@@ -236,7 +236,7 @@ sequenceDiagram
     participant PG as PostgreSQL
     participant QI as Query Intelligence
     participant Qdrant
-    participant Reranker as BGE reranker
+    participant Reranker as MiniLM reranker
     participant OpenAI
 
     User->>Vue: Ask a question
@@ -336,7 +336,7 @@ same scale. This gives BALANCED and ACCURATE queries semantic coverage plus exac
 
 ### Cross-encoder reranking
 
-ACCURATE retrieves a broader authorized pool, then `BAAI/bge-reranker-base` scores each
+ACCURATE retrieves a broader authorized pool, then `Xenova/ms-marco-MiniLM-L-6-v2` scores each
 question/chunk pair. Only the highest-ranked bounded chunks reach answer generation.
 
 ## Product Experience
@@ -415,7 +415,7 @@ tables; no duplicate analytics database or table is required.
 | Backend quality  | pytest, pytest-asyncio, Ruff, mypy                              |
 | Relational data  | PostgreSQL 16, Alembic                                          |
 | Vector data      | Qdrant with named dense and sparse vectors                      |
-| AI               | OpenAI API, Docling, FastEmbed, BGE reranker                    |
+| AI               | OpenAI API, Docling, FastEmbed, MiniLM reranker                 |
 | Evaluation       | RAGAS 0.4                                                       |
 | Local runtime    | Docker Compose, Uvicorn, Vite                                   |
 
@@ -529,7 +529,7 @@ A complete reviewer flow takes the application through its major trust and quali
 3. Wait for `PROCESSING` to become `READY`; confirm the chunk count appears.
 4. Ask an FAQ in `/chat`; observe FAST and dense retrieval metadata.
 5. Ask for an exact policy identifier; observe BALANCED and hybrid RRF.
-6. Ask for a comparison or summary; observe ACCURATE and BGE reranking.
+6. Ask for a comparison or summary; observe ACCURATE and MiniLM reranking.
 7. Open citations and reopen the conversation after refreshing the page.
 8. Open `/inspector` and compare candidate ranks, scores, and final-context inclusion.
 9. Sign out and sign in as `developer@demo.com`; confirm the HR-only content is not retrievable.
@@ -565,7 +565,7 @@ development.
 | `OPENAI_CHAT_MODEL`           | Classification and generation model        | `gpt-4.1-mini`           |
 | `OPENAI_EMBEDDING_MODEL`      | Dense embedding model                      | `text-embedding-3-small` |
 | `OPENAI_EMBEDDING_DIMENSIONS` | Dense vector size                          | `1536`                   |
-| `RERANKER_MODEL`              | Local cross-encoder                        | `BAAI/bge-reranker-base` |
+| `RERANKER_MODEL`              | Local cross-encoder             | `Xenova/ms-marco-MiniLM-L-6-v2` |
 | `RAGAS_LLM_MODEL`             | RAGAS judge model                          | `gpt-4.1-mini`           |
 | `RAGAS_EMBEDDING_MODEL`       | RAGAS relevancy embeddings                 | `text-embedding-3-small` |
 | `JWT_SECRET`                  | HMAC signing secret, minimum 32 characters | Safe placeholder only    |
@@ -848,8 +848,8 @@ The application is deployment-ready from the start:
 - demo and evaluation seeds are idempotent
 - the frontend production build succeeds
 
-The BGE reranker's first-load memory and startup behavior must be measured against the selected
-Render plan during Phase 13. It is intentionally not replaced before real deployment validation.
+The MiniLM reranker keeps ACCURATE requests genuinely cross-encoder reranked while fitting the
+memory constraints validated for the Phase 13 Render deployment.
 
 ## Design Decisions
 
