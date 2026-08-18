@@ -38,4 +38,14 @@ describe('authentication route guard', () => {
     expect(router.currentRoute.value.name).toBe('login')
     expect(router.currentRoute.value.query.redirect).toBe('/chat')
   })
+
+  it('protects the retrieval inspector route', async () => {
+    const router = createAppRouter(createPinia(), createMemoryHistory())
+
+    await router.push('/inspector')
+    await router.isReady()
+
+    expect(router.currentRoute.value.name).toBe('login')
+    expect(router.currentRoute.value.query.redirect).toBe('/inspector')
+  })
 })

@@ -147,6 +147,7 @@ async def test_same_topic_restricted_chunk_cannot_enter_context_or_citations() -
             generator,
             classifier,
             query_log_writer,
+            retrieval_log_writer=SimpleNamespace(record=AsyncMock()),
         )
         response = await service.answer("What is the retention bonus?", uuid4(), "Developer")
         context = generator.generate.await_args.args[1]
@@ -205,6 +206,7 @@ async def test_retrieval_profiles_never_bypass_qdrant_role_filter() -> None:
                 ),
                 SimpleNamespace(record=AsyncMock(return_value=uuid4())),
                 reranker,
+                SimpleNamespace(record=AsyncMock()),
             )
 
             developer_response = await service.answer("What is the bonus?", uuid4(), "Developer")

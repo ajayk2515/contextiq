@@ -327,6 +327,13 @@ onMounted(async () => {
                   {{ routingLabel(message.query_intelligence.executed_strategy) }} &middot; Top
                   {{ message.query_intelligence.candidate_top_k }}
                 </p>
+                <RouterLink
+                  v-if="message.query_id"
+                  class="mt-2 inline-flex text-xs font-semibold text-accent hover:underline"
+                  :to="{ name: 'inspector', query: { query: message.query_id } }"
+                >
+                  Inspect retrieval
+                </RouterLink>
                 <span v-if="message.insufficient_context" class="status-label status-pending mt-3">
                   Insufficient context
                 </span>

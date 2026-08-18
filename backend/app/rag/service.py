@@ -10,6 +10,7 @@ from app.query_intelligence.classifier import QueryClassifier
 from app.query_intelligence.domain import ExecutedRetrievalStrategy, QueryDecision
 from app.query_intelligence.persistence import QueryLogWriter
 from app.query_intelligence.profiles import RetrievalProfileConfig, profile_config
+from app.query_intelligence.retrieval_persistence import RetrievalLogWriter
 from app.rag.errors import raise_chat_unavailable
 from app.rag.generation import AnswerGenerator
 from app.rag.prompting import (
@@ -77,6 +78,7 @@ class RagService:
         classifier: QueryClassifier | None = None,
         query_log_writer: QueryLogWriter | None = None,
         reranker: RerankerService | None = None,
+        retrieval_log_writer: RetrievalLogWriter | None = None,
     ) -> None:
         self.settings = settings
         self.embedding_service = embedding_service or EmbeddingService(settings)
@@ -85,6 +87,7 @@ class RagService:
         self.classifier = classifier or QueryClassifier(settings)
         self.query_log_writer = query_log_writer or QueryLogWriter()
         self.reranker = reranker or RerankerService(settings)
+        self.retrieval_log_writer = retrieval_log_writer or RetrievalLogWriter()
 
     async def prepare(self, question: str, user_id: UUID, role: str) -> PreparedAnswer:
         decision = await self.classifier.classify(question)
@@ -137,15 +140,17 @@ class RagService:
                     "Document retrieval is temporarily unavailable. Please try again.",
                 )
 
+        retrieval_candidates = chunks
         if profile.reranker_enabled:
             try:
                 if profile.final_top_k is None:
                     raise RuntimeError("The reranking profile has no final candidate limit.")
-                chunks = await self.reranker.rerank(
+                retrieval_candidates = await self.reranker.rerank(
                     question,
                     chunks,
-                    profile.final_top_k,
+                    len(chunks),
                 )
+                chunks = retrieval_candidates[: profile.final_top_k]
             except Exception:
                 logger.exception("Cross-encoder reranking failed")
                 raise_chat_unavailable(
@@ -171,6 +176,15 @@ class RagService:
 
         metadata = _query_metadata(query_id, decision, profile)
         context, included_chunks = build_context(chunks, self.settings.rag_max_context_chars)
+        try:
+            await self.retrieval_log_writer.record(
+                query_id,
+                retrieval_candidates,
+                {chunk.chunk_id for chunk in included_chunks},
+                profile.executed_strategy,
+            )
+        except Exception:
+            logger.exception("Retrieval snapshot persistence failed for query %s", query_id)
         return PreparedAnswer(
             question=question,
             context=context,

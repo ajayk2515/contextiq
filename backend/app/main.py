@@ -10,6 +10,7 @@ from app.config import get_settings
 from app.conversations.router import router as conversations_router
 from app.database import close_database
 from app.documents.router import router as documents_router
+from app.query_intelligence.router import router as query_inspector_router
 from app.rag.router import router as chat_router
 
 
@@ -39,6 +40,7 @@ def create_app() -> FastAPI:
     application.include_router(documents_router)
     application.include_router(conversations_router)
     application.include_router(chat_router)
+    application.include_router(query_inspector_router)
     return application
 
 

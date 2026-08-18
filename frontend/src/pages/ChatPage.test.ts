@@ -83,7 +83,7 @@ const detail: ConversationDetail = {
 }
 
 function mountPage() {
-  return mount(ChatPage, { global: { stubs: { AppHeader: true } } })
+  return mount(ChatPage, { global: { stubs: { AppHeader: true, RouterLink: true } } })
 }
 
 describe('ChatPage', () => {

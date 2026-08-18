@@ -3,6 +3,7 @@ import { createRouter, createWebHistory, type RouterHistory, type RouteRecordRaw
 
 import ChatPage from '@/pages/ChatPage.vue'
 import FoundationPage from '@/pages/FoundationPage.vue'
+import InspectorPage from '@/pages/InspectorPage.vue'
 import DocumentsPage from '@/pages/DocumentsPage.vue'
 import LoginPage from '@/pages/LoginPage.vue'
 import { pinia } from '@/stores'
@@ -31,6 +32,12 @@ const routes: RouteRecordRaw[] = [
     path: '/documents',
     name: 'documents',
     component: DocumentsPage,
+    meta: { requiresAuth: true },
+  },
+  {
+    path: '/inspector',
+    name: 'inspector',
+    component: InspectorPage,
     meta: { requiresAuth: true },
   },
 ]

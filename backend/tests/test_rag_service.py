@@ -60,6 +60,10 @@ def query_decision(
     return QueryDecision(category=category, profile=profile, used_fallback=used_fallback)
 
 
+def retrieval_log_writer() -> SimpleNamespace:
+    return SimpleNamespace(record=AsyncMock())
+
+
 async def test_rag_service_builds_grounded_context_and_real_chunk_citations() -> None:
     retrieved = chunk()
     user_id = uuid4()
@@ -76,7 +80,17 @@ async def test_rag_service_builds_grounded_context_and_real_chunk_citations() ->
     generator = SimpleNamespace(generate=AsyncMock(return_value="Employees receive 20 days."))
     classifier = SimpleNamespace(classify=AsyncMock(return_value=decision))
     query_log_writer = SimpleNamespace(record=AsyncMock(return_value=uuid4()))
-    service = RagService(settings(), embedding, retriever, generator, classifier, query_log_writer)
+    snapshot_writer = retrieval_log_writer()
+    query_id = query_log_writer.record.return_value
+    service = RagService(
+        settings(),
+        embedding,
+        retriever,
+        generator,
+        classifier,
+        query_log_writer,
+        retrieval_log_writer=snapshot_writer,
+    )
 
     response = await service.answer("How much annual leave is provided?", user_id, "HR")
 
@@ -104,6 +118,12 @@ async def test_rag_service_builds_grounded_context_and_real_chunk_citations() ->
     )
     assert isinstance(log_args[4], int)
     assert log_args[4] >= 0
+    snapshot_writer.record.assert_awaited_once_with(
+        query_id,
+        [retrieved],
+        {retrieved.chunk_id},
+        ExecutedRetrievalStrategy.DENSE,
+    )
 
 
 async def test_rag_service_returns_deterministic_insufficient_context_without_llm() -> None:
@@ -125,7 +145,15 @@ async def test_rag_service_returns_deterministic_insufficient_context_without_ll
     generator = SimpleNamespace(generate=AsyncMock())
     classifier = SimpleNamespace(classify=AsyncMock(return_value=decision))
     query_log_writer = SimpleNamespace(record=AsyncMock(return_value=uuid4()))
-    service = RagService(settings(), embedding, retriever, generator, classifier, query_log_writer)
+    service = RagService(
+        settings(),
+        embedding,
+        retriever,
+        generator,
+        classifier,
+        query_log_writer,
+        retrieval_log_writer=retrieval_log_writer(),
+    )
 
     response = await service.answer("What is the moon office policy?", uuid4(), "Developer")
 
@@ -187,6 +215,7 @@ async def test_rag_service_applies_profile_top_k_and_reports_actual_strategy(
         classifier,
         query_log_writer,
         reranker,
+        retrieval_log_writer(),
     )
 
     response = await service.answer("Question", uuid4(), "Executive")
@@ -200,7 +229,7 @@ async def test_rag_service_applies_profile_top_k_and_reports_actual_strategy(
         retriever.search_dense.assert_not_awaited()
         retriever.search_hybrid.assert_awaited_once_with([0.1, 0.2], sparse, "Executive", top_k)
     if profile == RetrievalProfile.ACCURATE:
-        reranker.rerank.assert_awaited_once_with("Question", [], 5)
+        reranker.rerank.assert_awaited_once_with("Question", [], 0)
     else:
         reranker.rerank.assert_not_awaited()
     assert response.query_intelligence.candidate_top_k == top_k
@@ -219,6 +248,7 @@ async def test_accurate_reranking_limits_context_and_citations_to_final_five() -
     model = SimpleNamespace(rerank=lambda *_args, **_kwargs: [0.1, 0.9, 0.2, 0.8, 0.7, 0.6, 0.5])
     reranker = RerankerService(settings(), model)
     generator = SimpleNamespace(generate=AsyncMock(return_value="Grounded comparison"))
+    snapshot_writer = retrieval_log_writer()
     service = RagService(
         settings(),
         SimpleNamespace(
@@ -241,6 +271,7 @@ async def test_accurate_reranking_limits_context_and_citations_to_final_five() -
         ),
         SimpleNamespace(record=AsyncMock(return_value=uuid4())),
         reranker,
+        snapshot_writer,
     )
 
     response = await service.answer("Compare the policies", uuid4(), "HR")
@@ -259,6 +290,13 @@ async def test_accurate_reranking_limits_context_and_citations_to_final_five() -
     assert response.query_intelligence.executed_strategy == (
         ExecutedRetrievalStrategy.HYBRID_RRF_RERANK
     )
+    persisted_candidates = snapshot_writer.record.await_args.args[1]
+    included_ids = snapshot_writer.record.await_args.args[2]
+    assert len(persisted_candidates) == 7
+    assert {candidate.rank_after for candidate in persisted_candidates} == set(range(1, 8))
+    assert len(included_ids) == 5
+    assert candidates[0].chunk_id not in included_ids
+    assert candidates[2].chunk_id not in included_ids
 
 
 async def test_accurate_reranker_failure_returns_safe_error() -> None:
@@ -330,7 +368,15 @@ async def test_rag_service_maps_provider_failures_to_safe_errors(
     )
     classifier = SimpleNamespace(classify=AsyncMock(return_value=query_decision()))
     query_log_writer = SimpleNamespace(record=AsyncMock(return_value=uuid4()))
-    service = RagService(settings(), embedding, retriever, generator, classifier, query_log_writer)
+    service = RagService(
+        settings(),
+        embedding,
+        retriever,
+        generator,
+        classifier,
+        query_log_writer,
+        retrieval_log_writer=retrieval_log_writer(),
+    )
 
     with pytest.raises(HTTPException) as error:
         await service.answer("Question", uuid4(), "HR")
@@ -383,6 +429,7 @@ async def test_rag_service_maps_hybrid_failures_to_safe_errors(
             )
         ),
         SimpleNamespace(record=AsyncMock(return_value=uuid4())),
+        retrieval_log_writer=retrieval_log_writer(),
     )
 
     with pytest.raises(HTTPException) as error:
@@ -426,8 +473,9 @@ def test_context_builder_preserves_boundaries_and_respects_limit() -> None:
 
 async def test_accurate_streaming_uses_shared_reranked_top_five_and_history() -> None:
     candidates = [chunk(f"Candidate {index}", f"candidate-{index}.md") for index in range(7)]
-    reranked = candidates[1:6]
+    reranked = candidates[1:6] + [candidates[0], candidates[6]]
     reranker = SimpleNamespace(rerank=AsyncMock(return_value=reranked))
+    snapshot_writer = retrieval_log_writer()
 
     streamed_history: list[ConversationHistoryMessage] = []
 
@@ -462,16 +510,47 @@ async def test_accurate_streaming_uses_shared_reranked_top_five_and_history() ->
         ),
         SimpleNamespace(record=AsyncMock(return_value=uuid4())),
         reranker,
+        snapshot_writer,
     )
     history = [ConversationHistoryMessage(role="assistant", content="Earlier grounded answer")]
 
     prepared = await service.prepare("Compare the policies", uuid4(), "HR")
     tokens = [token async for token in service.stream(prepared, history)]
 
-    reranker.rerank.assert_awaited_once_with("Compare the policies", candidates, 5)
+    reranker.rerank.assert_awaited_once_with("Compare the policies", candidates, 7)
     assert prepared.query_intelligence.executed_strategy == (
         ExecutedRetrievalStrategy.HYBRID_RRF_RERANK
     )
     assert len(prepared.sources) == 5
     assert tokens == ["Grounded comparison"]
     assert streamed_history == history
+    persisted_candidates = snapshot_writer.record.await_args.args[1]
+    assert persisted_candidates == reranked
+    assert snapshot_writer.record.await_args.args[2] == {
+        candidate.chunk_id for candidate in reranked[:5]
+    }
+
+
+async def test_retrieval_snapshot_failure_does_not_block_grounded_answer() -> None:
+    retrieved = chunk()
+    snapshot_writer = SimpleNamespace(
+        record=AsyncMock(side_effect=RuntimeError("snapshot database unavailable"))
+    )
+    service = RagService(
+        settings(),
+        SimpleNamespace(dense=AsyncMock(return_value=[[0.1, 0.2]]), sparse=AsyncMock()),
+        SimpleNamespace(
+            search_dense=AsyncMock(return_value=[retrieved]),
+            search_hybrid=AsyncMock(),
+            close=AsyncMock(),
+        ),
+        SimpleNamespace(generate=AsyncMock(return_value="Grounded answer")),
+        SimpleNamespace(classify=AsyncMock(return_value=query_decision())),
+        SimpleNamespace(record=AsyncMock(return_value=uuid4())),
+        retrieval_log_writer=snapshot_writer,
+    )
+
+    response = await service.answer("Question", uuid4(), "HR")
+
+    assert response.answer == "Grounded answer"
+    snapshot_writer.record.assert_awaited_once()

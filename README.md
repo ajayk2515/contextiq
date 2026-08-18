@@ -2,7 +2,7 @@
 
 Enterprise Knowledge Intelligence Platform (EKIP) is a full-stack AI/RAG MVP. The application is being built phase by phase according to [`PROJECT_SPEC.md`](PROJECT_SPEC.md).
 
-The current implementation provides the local Vue, FastAPI, PostgreSQL, and Qdrant foundation, email/password authentication for the four demo roles, role-aware document ingestion, grounded adaptive retrieval, SSE answer streaming, and persistent conversations with historical citation snapshots.
+The current implementation provides the local Vue, FastAPI, PostgreSQL, and Qdrant foundation, email/password authentication for the four demo roles, role-aware document ingestion, grounded adaptive retrieval, SSE answer streaming, persistent conversations, and a historical Retrieval Inspector.
 
 ## Prerequisites
 
@@ -86,6 +86,18 @@ Conversations and messages are persisted in PostgreSQL. The chat workspace lists
 `POST /api/chat/stream` returns standard `text/event-stream` output in this order: `metadata`, incremental `token` events, `citations`, then `complete`. If generation fails after streaming begins, it emits a safe `error` event. User messages are committed before retrieval, while completed assistant messages are committed once after successful generation, avoiding a database transaction across the OpenAI stream. The original non-streaming `POST /api/chat` endpoint remains available through the same RAG preparation path.
 
 Each chat request records its authenticated user, query, classification, selected profile, actual execution strategy, fallback status, and retrieval latency in PostgreSQL. Retrieval latency covers query representations and retrieval, plus reranking for ACCURATE. Apply the latest Alembic migration before using the current chat behavior.
+
+Open `http://localhost:5173/inspector` to inspect the signed-in user's recent retrieval history. Each query stores immutable chunk snapshots in PostgreSQL, including source metadata, bounded text snippets, pre-rerank rank, strategy-specific dense or RRF scores, ACCURATE reranker score and post-rerank rank, and whether the chunk entered final answer context. FAST stores up to 3 dense candidates, BALANCED up to 8 hybrid RRF candidates, and ACCURATE all available candidates from its initial Top-K 15 retrieval while marking only the final bounded top 5 as context. These snapshots remain available if their original document or conversation is later deleted.
+
+The authenticated inspector endpoints are:
+
+```text
+GET /api/queries
+GET /api/queries/{query_id}
+GET /api/queries/{query_id}/retrieval
+```
+
+Every endpoint resolves ownership from the validated JWT and returns the same safe not-found response for missing and other-user query IDs. Snapshot persistence is deliberately observational: a database failure is logged without blocking an otherwise successful grounded answer.
 
 The first ACCURATE query downloads the CPU-compatible FastEmbed BGE reranker model into the local model cache. Later requests reuse the same process-wide model instance.
 

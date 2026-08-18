@@ -13,13 +13,15 @@ export type QueryCategory =
   'FAQ' | 'SPECIFIC_SEARCH' | 'MULTI_DOC_COMPARISON' | 'SUMMARIZATION' | 'RESTRICTED_DATA'
 
 export type RetrievalProfile = 'FAST' | 'BALANCED' | 'ACCURATE'
+export type ExecutedRetrievalStrategy =
+  'DENSE' | 'DENSE_FALLBACK' | 'HYBRID_RRF' | 'HYBRID_RRF_RERANK'
 
 export interface QueryIntelligenceMetadata {
   query_id: string
   category: QueryCategory
   profile: RetrievalProfile
   intended_strategy: 'DENSE' | 'HYBRID' | 'HYBRID_WITH_RERANK'
-  executed_strategy: 'DENSE' | 'HYBRID_RRF' | 'HYBRID_RRF_RERANK'
+  executed_strategy: ExecutedRetrievalStrategy
   candidate_top_k: number
   classification_fallback: boolean
 }

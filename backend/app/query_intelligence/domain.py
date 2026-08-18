@@ -25,6 +25,7 @@ class IntendedRetrievalStrategy(StrEnum):
 
 class ExecutedRetrievalStrategy(StrEnum):
     DENSE = "DENSE"
+    DENSE_FALLBACK = "DENSE_FALLBACK"
     HYBRID_RRF = "HYBRID_RRF"
     HYBRID_RRF_RERANK = "HYBRID_RRF_RERANK"
 
