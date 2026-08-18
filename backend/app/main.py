@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.analytics.router import router as analytics_router
 from app.api.health import router as health_router
 from app.auth.router import router as auth_router
 from app.config import get_settings
@@ -45,6 +46,7 @@ def create_app() -> FastAPI:
     application.include_router(query_inspector_router)
     application.include_router(evaluations_router)
     application.include_router(optimization_router)
+    application.include_router(analytics_router)
     return application
 
 

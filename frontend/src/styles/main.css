@@ -70,6 +70,7 @@
     font-size: 0.875rem;
     font-weight: 500;
     color: #627078;
+    white-space: nowrap;
   }
 
   .nav-link:hover,
@@ -123,5 +124,14 @@
 
   .table-cell {
     padding: 0.9rem 1rem;
+  }
+
+  .empty-state {
+    border: 1px solid #d9e0e3;
+    background: #fff;
+    padding: 1rem;
+    font-size: 0.875rem;
+    line-height: 1.5rem;
+    color: #627078;
   }
 }

@@ -1,32 +1,89 @@
 # EKIP
 
-Enterprise Knowledge Intelligence Platform (EKIP) is a full-stack AI/RAG MVP. The application is being built phase by phase according to [`PROJECT_SPEC.md`](PROJECT_SPEC.md).
+Enterprise Knowledge Intelligence Platform (EKIP) is a role-aware knowledge assistant that
+turns internal documents into grounded, cited answers. It combines adaptive retrieval,
+authorization inside the vector query, persistent conversations, retrieval explainability,
+explicit RAG evaluation, deterministic optimization guidance, and aggregate analytics in one
+modular monolith.
 
-The current implementation provides the local Vue, FastAPI, PostgreSQL, and Qdrant foundation, email/password authentication for the four demo roles, role-aware document ingestion, grounded adaptive retrieval, SSE answer streaming, persistent conversations, a historical Retrieval Inspector, explicit RAGAS evaluation runs over a checked-in synthetic corpus, and deterministic optimization recommendations.
+The application is complete for local MVP use through Phase 12 of
+[`PROJECT_SPEC.md`](PROJECT_SPEC.md). Cloud deployment is intentionally reserved for Phase 13.
+
+## Key Features
+
+- Email/password authentication with signed JWT access tokens and four demo roles
+- PDF, DOCX, PPTX, and Markdown ingestion through Docling
+- Dense OpenAI embeddings and FastEmbed BM25-compatible sparse vectors in Qdrant
+- Qdrant payload filtering by the server-resolved role before candidate selection
+- Query Intelligence that selects FAST, BALANCED, or ACCURATE retrieval
+- Dense search, hybrid retrieval, native reciprocal rank fusion (RRF), and local BGE reranking
+- Grounded OpenAI answers with citations and explicit insufficient-context behavior
+- SSE answer streaming and PostgreSQL-backed conversations
+- Historical Retrieval Inspector with immutable candidate snapshots
+- Explicit RAGAS evaluation for Faithfulness, Answer Relevancy, Context Precision, and Context Recall
+- Persisted, deterministic optimization recommendations that never auto-apply changes
+- Authenticated analytics for quality, strategy usage, latency, and open recommendations
+
+## Architecture
+
+```text
+Vue 3 + Pinia + ECharts
+          |
+       REST / SSE
+          |
+       FastAPI
+       |   |   |
+       |   |   +-- OpenAI chat and dense embeddings
+       |   +------ Qdrant dense/sparse vectors and RBAC filters
+       +---------- PostgreSQL application, retrieval, evaluation, and analytics data
+          |
+          +------ Docling ingestion / FastEmbed sparse vectors / local BGE reranker / RAGAS
+```
+
+The backend is a modular monolith: authentication, documents, ingestion, retrieval, chat,
+conversations, inspection, evaluation, optimization, and analytics have separate modules while
+sharing one FastAPI process and PostgreSQL transaction boundary. This keeps the MVP deployable as
+one service without introducing distributed-system overhead.
+
+### Request Flow
+
+```text
+Authenticated question
+  -> classify category and retrieval profile
+  -> apply the user's server-resolved role in Qdrant
+  -> dense or dense+sparse retrieval
+  -> optional RRF and BGE reranking
+  -> bounded authorized context
+  -> grounded streamed answer and citations
+  -> persist query/retrieval facts and conversation messages
+  -> expose aggregate trends through Analytics
+```
+
+## Technology Stack
+
+| Area | Technology |
+| --- | --- |
+| Frontend | Vue 3, TypeScript, Pinia, Vue Router, Tailwind CSS, ECharts, Vitest |
+| Backend | FastAPI, Pydantic, SQLAlchemy async, Alembic, pytest |
+| Data | PostgreSQL 16, Qdrant |
+| AI and ingestion | OpenAI API, Docling, FastEmbed, BGE reranker |
+| Evaluation | RAGAS 0.4, deterministic optimization rules |
+| Local services | Docker Compose |
 
 ## Prerequisites
 
 - Python 3.11 or newer
 - Node.js 22 or newer
 - Docker Desktop with Docker Compose
+- An OpenAI API key for ingestion, chat, Query Intelligence, and evaluation
 
-## Environment
+## Local Setup
 
-Create the local environment file from the tracked template:
+Create the environment file and add a valid `OPENAI_API_KEY` locally:
 
 ```powershell
 Copy-Item .env.example .env
 ```
-
-The defaults are intended only for local development. Change credentials and service URLs through environment variables rather than editing application code.
-
-Document ingestion and chat require `OPENAI_API_KEY`. Upload limits, chunk size and overlap, embedding, chat, and reranker models, retrieval score threshold, context size, answer size, conversation-history message limit, and the Qdrant collection name are configurable in `.env`. Retrieval Top-K values are centralized in the FAST, BALANCED, and ACCURATE profile definitions.
-
-RAGAS evaluation uses `RAGAS_LLM_MODEL` as its judge and
-`RAGAS_EMBEDDING_MODEL` for answer relevancy. Evaluation makes multiple OpenAI
-requests per case and is run only when an authenticated user explicitly starts it.
-
-## Local Infrastructure
 
 Start PostgreSQL and Qdrant:
 
@@ -35,11 +92,7 @@ docker compose up -d
 docker compose ps
 ```
 
-PostgreSQL listens on `5432` and Qdrant on `6333` by default. Both ports can be changed in `.env`.
-
-## Backend
-
-From the repository root:
+Set up and start the backend from the repository root:
 
 ```powershell
 cd backend
@@ -49,29 +102,11 @@ python -m pip install --upgrade pip
 python -m pip install -r requirements-dev.txt
 python -m alembic upgrade head
 python -m scripts.seed_demo
+python -m scripts.seed_evaluation_data
 python -m uvicorn app.main:app --reload
 ```
 
-The API is available at `http://localhost:8000`. Verify the application and its dependencies:
-
-```powershell
-Invoke-RestMethod http://localhost:8000/health
-```
-
-Run backend checks:
-
-```powershell
-python -m ruff check .
-python -m ruff format --check .
-python -m mypy app
-python -m pytest
-```
-
-The first PDF parsing run downloads Docling model assets into a local ignored cache. On Windows, the application uses Hugging Face's no-symlink cache fallback and disables Torch model compilation, so Visual C++ build tools are not required.
-
-## Frontend
-
-In a second terminal, from the repository root:
+Start the frontend in a second terminal:
 
 ```powershell
 cd frontend
@@ -79,105 +114,49 @@ npm install
 npm run dev
 ```
 
-The application is available at `http://localhost:5173`.
+Open `http://localhost:5173`. The API is at `http://localhost:8000`, interactive OpenAPI
+documentation is at `http://localhost:8000/docs`, and health is at
+`http://localhost:8000/health`.
 
-After signing in, open `http://localhost:5173/documents` to upload a PDF, DOCX, PPTX, or Markdown file and assign its allowed roles. Documents move from `PROCESSING` to `READY` after Docling parsing, dense and sparse embedding, and Qdrant indexing. Failed processing stores a visible error message.
+## Environment Variables
 
-Open `http://localhost:5173/chat` to ask a question against indexed documents available to the authenticated role. Query Intelligence classifies the question as FAQ, specific search, multi-document comparison, summarization, or restricted data, then selects the centralized FAST, BALANCED, or ACCURATE retrieval profile. FAST executes dense Top-K 3. BALANCED executes dense and BM25 sparse retrieval with native Qdrant RRF and returns Top-K 8. ACCURATE retrieves 15 hybrid RRF candidates, reranks them locally with `BAAI/bge-reranker-base`, and supplies only the final Top-K 5 to answer generation. The user's server-resolved role is applied to both Qdrant prefetches before fusion and reranking. Responses include the executed strategy and citations derived from the final authorized chunks supplied as bounded context.
+`.env.example` contains every application setting with safe local or blank values. `.env` is
+ignored by Git. Important groups are:
 
-Conversations and messages are persisted in PostgreSQL. The chat workspace lists only the signed-in user's recent conversations, loads message history on selection, derives the title from the first user message, and restores each assistant message with its original JSONB citation snapshot. The current message always runs through retrieval; up to `CHAT_HISTORY_MESSAGE_LIMIT` recent messages are supplied only as conversational generation context and are never treated as authoritative document evidence.
+| Purpose | Variables |
+| --- | --- |
+| Application | `APP_ENV`, `CORS_ORIGINS`, `VITE_API_BASE_URL` |
+| Authentication | `JWT_SECRET`, `JWT_ALGORITHM`, `JWT_EXPIRATION_MINUTES`, `JWT_ISSUER`, `DEMO_USER_PASSWORD` |
+| PostgreSQL | `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_PORT`, `DATABASE_URL` |
+| Qdrant | `QDRANT_URL`, `QDRANT_API_KEY`, `QDRANT_PORT`, `QDRANT_GRPC_PORT`, `QDRANT_DOCUMENTS_COLLECTION` |
+| OpenAI and RAG | `OPENAI_API_KEY`, `OPENAI_CHAT_MODEL`, `OPENAI_EMBEDDING_MODEL`, `OPENAI_EMBEDDING_DIMENSIONS`, `RAG_SCORE_THRESHOLD`, `RAG_MAX_CONTEXT_CHARS`, `RAG_MAX_ANSWER_TOKENS` |
+| Ingestion | `MAX_UPLOAD_SIZE_MB`, `CHUNK_SIZE`, `CHUNK_OVERLAP` |
+| Conversations | `CHAT_HISTORY_MESSAGE_LIMIT` |
+| Reranking and evaluation | `RERANKER_MODEL`, `RAGAS_LLM_MODEL`, `RAGAS_EMBEDDING_MODEL` |
 
-`POST /api/chat/stream` returns standard `text/event-stream` output in this order: `metadata`, incremental `token` events, `citations`, then `complete`. If generation fails after streaming begins, it emits a safe `error` event. User messages are committed before retrieval, while completed assistant messages are committed once after successful generation, avoiding a database transaction across the OpenAI stream. The original non-streaming `POST /api/chat` endpoint remains available through the same RAG preparation path.
+Never place a real OpenAI key, cloud database password, Qdrant Cloud key, or production JWT secret
+in `.env.example`.
 
-Each chat request records its authenticated user, query, classification, selected profile, actual execution strategy, fallback status, and retrieval latency in PostgreSQL. Retrieval latency covers query representations and retrieval, plus reranking for ACCURATE. Apply the latest Alembic migration before using the current chat behavior.
+## Docker and Health
 
-Open `http://localhost:5173/inspector` to inspect the signed-in user's recent retrieval history. Each query stores immutable chunk snapshots in PostgreSQL, including source metadata, bounded text snippets, pre-rerank rank, strategy-specific dense or RRF scores, ACCURATE reranker score and post-rerank rank, and whether the chunk entered final answer context. FAST stores up to 3 dense candidates, BALANCED up to 8 hybrid RRF candidates, and ACCURATE all available candidates from its initial Top-K 15 retrieval while marking only the final bounded top 5 as context. These snapshots remain available if their original document or conversation is later deleted.
-
-The authenticated inspector endpoints are:
-
-```text
-GET /api/queries
-GET /api/queries/{query_id}
-GET /api/queries/{query_id}/retrieval
-```
-
-Every endpoint resolves ownership from the validated JWT and returns the same safe not-found response for missing and other-user query IDs. Snapshot persistence is deliberately observational: a database failure is logged without blocking an otherwise successful grounded answer.
-
-The first ACCURATE query downloads the CPU-compatible FastEmbed BGE reranker model into the local model cache. Later requests reuse the same process-wide model instance.
-
-## RAGAS Evaluation
-
-Apply the latest migration, then seed the versioned synthetic evaluation corpus through
-the normal document-ingestion pipeline:
+PostgreSQL listens on `5432` and Qdrant on `6333` by default. Docker named volumes preserve local
+data. Check both dependencies through the application:
 
 ```powershell
-cd backend
-python -m alembic upgrade head
-python -m scripts.seed_evaluation_data
+Invoke-RestMethod http://localhost:8000/health
 ```
 
-The seed command is idempotent and leaves five checked-in Markdown policies indexed
-with their intended role metadata. It also ensures the four demo identities exist.
-The source documents and 23-case dataset are under `evaluation/`.
-
-Open `http://localhost:5173/evaluations` to run either the representative five-case
-set or all 23 cases. The authenticated API endpoints are:
-
-```text
-POST /api/evaluations/run
-GET  /api/evaluations
-GET  /api/evaluations/{run_id}
-```
-
-`POST /api/evaluations/run` accepts an optional JSON `case_ids` list; it never accepts
-a local file path. A background task runs every case through the existing classifier,
-role-filtered retrieval, optional hybrid fusion/reranking, and grounded generation
-pipeline without creating conversations. The exact final chunk texts used for answer
-generation are passed to RAGAS 0.4 collection metrics for Faithfulness, Answer
-Relevancy, Context Precision, and Context Recall. Runs, progress, per-case results,
-nullable metric failures, and the original Retrieval Inspector `query_id` are persisted
-in PostgreSQL.
-
-## Optimization Recommendations
-
-When an evaluation run is marked `COMPLETED`, the Optimization Engine groups its valid
-quality metrics and authoritative `query_logs.retrieval_latency_ms` values by retrieval
-profile and executed strategy. It applies three fixed rules:
-
-```text
-Context Recall < 0.65
-Context Precision < 0.60
-Retrieval Latency > 2500 ms
-```
-
-Null metrics are ignored, and equality at a threshold does not trigger a rule.
-Recommendations are deterministic templates that reflect whether dense retrieval,
-hybrid RRF, or cross-encoder reranking actually ran. They are persisted for the source
-evaluation run but never modify retrieval profiles, Top-K values, environment variables,
-Qdrant, or deployment configuration.
-
-The evaluations page displays open recommendations beneath the selected completed run.
-Dismissal changes the status to `DISMISSED`; it does not delete or apply the recommendation.
-The authenticated API is:
-
-```text
-GET   /api/recommendations?evaluation_run_id={run_id}
-PATCH /api/recommendations/{recommendation_id}
-```
-
-To generate or regenerate recommendations for a completed run created before Phase 11:
+Stop services without deleting data:
 
 ```powershell
-cd backend
-python -m scripts.generate_recommendations <evaluation-run-uuid>
+docker compose down
 ```
 
-Regeneration transactionally replaces recommendations only for that run, preventing
-duplicates while leaving older evaluation runs and their recommendations unchanged.
+Use `docker compose down --volumes` only when intentionally resetting local demo data.
 
-## Demo Authentication
+## Authentication
 
-The seed command is idempotent and creates or refreshes these local accounts:
+`python -m scripts.seed_demo` idempotently creates or refreshes these accounts:
 
 | Email | Role |
 | --- | --- |
@@ -186,72 +165,215 @@ The seed command is idempotent and creates or refreshes these local accounts:
 | `finance@demo.com` | Finance |
 | `executive@demo.com` | Executive |
 
-All demo users receive the password configured in `DEMO_USER_PASSWORD`. The checked-in example uses `ekip_demo_password` for local development only. Never reuse that value outside a local demo environment.
+All demo users receive `DEMO_USER_PASSWORD`. The example value `ekip_demo_password` is local-demo
+only. JWTs are stored in browser `sessionStorage`, so a login survives normal page refreshes and is
+cleared by logout or the end of the browser session. Identity and role always come from the
+validated JWT and database user, never from frontend request fields.
 
-Authentication uses a signed JWT access token. The browser stores the token in `sessionStorage`, so it survives a normal page refresh but is removed when the user signs out or the browser session ends. Configure `JWT_SECRET` with a unique value of at least 32 characters.
+## Document Ingestion
 
-Verify authentication from PowerShell:
+Open `/documents`, select a PDF, DOCX, PPTX, or Markdown file, and choose one or more allowed roles.
+The backend validates the extension, media type, size, and content hash; writes only a temporary
+file; parses and chunks it with Docling; creates OpenAI `text-embedding-3-small` vectors and
+FastEmbed sparse vectors; and indexes named `dense` and `sparse` vectors in Qdrant. PostgreSQL
+tracks `PROCESSING`, `READY`, or `FAILED`, chunk count, uploader, roles, and safe error details.
+Temporary upload files are deleted after processing. Deletion is uploader-only and removes the
+document's Qdrant points.
 
-```powershell
-$login = Invoke-RestMethod -Method Post `
-  -Uri http://localhost:8000/api/auth/login `
-  -ContentType 'application/json' `
-  -Body '{"email":"developer@demo.com","password":"ekip_demo_password"}'
+The first parsing run may download Docling model assets into the ignored local model cache. HTML,
+CSV, and Excel remain intentionally out of scope because the four required formats cover the MVP
+without widening upload validation and parser testing.
 
-Invoke-RestMethod -Uri http://localhost:8000/api/auth/me `
-  -Headers @{ Authorization = "Bearer $($login.access_token)" }
+## RBAC Retrieval
+
+Each Qdrant point carries `allowed_roles` plus document and chunk metadata. The backend resolves the
+authenticated role and includes an `allowed_roles` filter in every dense and sparse prefetch. The
+filter runs before fusion, reranking, context selection, and citation creation, preventing
+restricted chunks from entering any downstream candidate pool. Filtering after retrieval would be
+both less secure and lower quality.
+
+## Query Intelligence and Retrieval
+
+Query Intelligence classifies FAQ, specific search, multi-document comparison, summarization, and
+restricted-data questions, then chooses a centralized profile:
+
+| Profile | Executed strategy | Candidate behavior |
+| --- | --- | --- |
+| FAST | `DENSE` | Dense Top-K 3 |
+| BALANCED | `HYBRID_RRF` | Dense + sparse Qdrant RRF, Top-K 8 |
+| ACCURATE | `HYBRID_RRF_RERANK` | Hybrid Top-K 15, BGE rerank, final Top-K 5 |
+
+Hybrid retrieval combines semantic similarity with exact-term matching. RRF merges dense and sparse
+ranks without relying on incomparable raw score scales. The cross-encoder is reserved for ACCURATE
+queries because it improves final ordering at a meaningful latency cost. The first ACCURATE query
+downloads the configured BGE model into an ignored local cache and later requests reuse the same
+process-wide instance.
+
+## Chat, Conversations, and Citations
+
+Open `/chat` to ask questions against documents authorized for the signed-in role. `POST
+/api/chat/stream` emits `metadata`, incremental `token` events, `citations`, and `complete`; failures
+after streaming begins emit a safe `error` event. Citations are created only from final chunks
+actually supplied to generation and include the filename, page/section when available, and snippet.
+
+Conversations and messages persist in PostgreSQL and are always owner-scoped. Citation snapshots
+remain attached when a conversation is reopened. Recent messages may help conversational answer
+generation but never become authoritative document evidence. The browser uses `fetch` with a
+`ReadableStream` because streaming is an authenticated `POST`, not an unauthenticated native
+`EventSource` request.
+
+## Retrieval Inspector
+
+Open `/inspector` for user-scoped query explainability. Each query records classification, profile,
+actual strategy, fallback status, retrieval latency, candidates, ranks, available dense/RRF/reranker
+scores, and final-context inclusion. Candidate metadata and bounded snippets are copied into
+PostgreSQL, so historical inspection still works after source document deletion. Missing and
+other-user query IDs return the same safe not-found response.
+
+## RAGAS Evaluation
+
+`python -m scripts.seed_evaluation_data` idempotently indexes five synthetic Markdown policies with
+their intended roles. The checked-in `evaluation/dataset.json` contains 23 matching synthetic
+cases. Open `/evaluations` to run the representative five cases or the full dataset explicitly.
+Normal chat requests never invoke RAGAS.
+
+Each evaluation uses the existing authenticated retrieval and generation path without creating a
+conversation. RAGAS scores Faithfulness, Answer Relevancy, Context Precision, and Context Recall;
+runs, progress, nullable metric failures, case results, and Inspector query IDs persist in
+PostgreSQL. Explicit runs keep normal query latency and API cost predictable.
+
+## Optimization Recommendations
+
+Completed runs are evaluated against fixed rules:
+
+```text
+Context Recall < 0.65
+Context Precision < 0.60
+Retrieval Latency > 2500 ms
 ```
 
-Use the authenticated token to call the chat endpoint directly:
+Recommendations reflect the executed profile and strategy, persist with `OPEN` or `DISMISSED`
+status, and never change Top-K, profiles, Qdrant, environment variables, or deployment. A human
+reviews the evidence and decides whether to act; the system does not perform automatic RAG tuning.
+
+Regenerate guidance for an existing completed run with:
 
 ```powershell
-$answer = Invoke-RestMethod -Method Post `
-  -Uri http://localhost:8000/api/chat `
-  -Headers @{ Authorization = "Bearer $($login.access_token)" } `
-  -ContentType 'application/json' `
-  -Body '{"message":"What is the annual leave policy?"}'
-
-$answer
+cd backend
+python -m scripts.generate_recommendations <evaluation-run-uuid>
 ```
 
-Conversation endpoints require the same bearer token:
+## Analytics
 
-```powershell
-$conversation = Invoke-RestMethod -Method Post `
-  -Uri http://localhost:8000/api/conversations `
-  -Headers @{ Authorization = "Bearer $($login.access_token)" }
+Open `/analytics` for aggregate, non-sensitive system behavior. One authenticated endpoint,
+`GET /api/analytics/summary`, returns:
 
-Invoke-RestMethod -Uri http://localhost:8000/api/conversations `
-  -Headers @{ Authorization = "Bearer $($login.access_token)" }
+- total queries and average retrieval latency
+- the latest completed evaluation's four quality averages
+- executed retrieval-strategy counts
+- up to 100 recent latency points
+- up to 20 completed evaluation-run aggregates
+- up to 20 persisted open recommendations
+
+ECharts renders strategy distribution, evaluation history, and latency over time. Null metrics are
+shown as `N/A` or chart gaps rather than zeros. Analytics never includes raw queries, conversation
+content, document snippets, or another user's detailed Inspector data.
+
+## API Surface
+
+```text
+POST   /api/auth/login
+GET    /api/auth/me
+POST   /api/documents
+GET    /api/documents
+GET    /api/documents/{document_id}
+DELETE /api/documents/{document_id}
+POST   /api/conversations
+GET    /api/conversations
+GET    /api/conversations/{conversation_id}
+DELETE /api/conversations/{conversation_id}
+POST   /api/chat
+POST   /api/chat/stream
+GET    /api/queries
+GET    /api/queries/{query_id}
+GET    /api/queries/{query_id}/retrieval
+POST   /api/evaluations/run
+GET    /api/evaluations
+GET    /api/evaluations/{run_id}
+GET    /api/recommendations
+PATCH  /api/recommendations/{recommendation_id}
+GET    /api/analytics/summary
 ```
 
-The Vue client consumes the authenticated streaming endpoint with `fetch` and a `ReadableStream`, because the request is a `POST` with an authorization header rather than a native `EventSource` request.
+FastAPI `/docs` is the authoritative interactive request/response reference.
 
-Run frontend checks:
+## Database Migrations
+
+Apply and verify the complete migration chain:
 
 ```powershell
+cd backend
+python -m alembic upgrade head
+python -m alembic current
+python -m alembic check
+```
+
+Schema changes must use Alembic; no manual table edits are required. To create a future migration:
+
+```powershell
+python -m alembic revision --autogenerate -m "describe change"
+```
+
+## Validation
+
+Backend:
+
+```powershell
+cd backend
+python -m ruff check .
+python -m ruff format --check .
+python -m mypy app
+python -m pytest
+python -m pip check
+python -m alembic check
+```
+
+Frontend:
+
+```powershell
+cd frontend
+npm run format:check
 npm run lint
 npm run type-check
 npm run test
 npm run build
+npm audit --omit=dev
 ```
 
-## Database Migrations
-
-Create schema changes only through Alembic:
+Repository whitespace check:
 
 ```powershell
-cd backend
-python -m alembic revision --autogenerate -m "describe change"
-python -m alembic upgrade head
+git diff --check
 ```
 
-Phase 0 has no application tables, so the initial Alembic revision is intentionally empty.
+## Deployment Architecture
 
-## Stop Local Infrastructure
+Phase 13 will deploy the same architecture without changing the application boundary:
 
-```powershell
-docker compose down
+```text
+GitHub
+  |-- Vercel: Vue 3 frontend
+  |      |
+  |      +-- REST / SSE to Render
+  |
+  +-- Render: FastAPI backend
+         |-- Neon PostgreSQL
+         |-- Qdrant Cloud
+         +-- OpenAI API
 ```
 
-Named Docker volumes preserve local PostgreSQL and Qdrant data. Use `docker compose down --volumes` only when intentionally resetting local data.
+Deployment has not been configured yet. The code is deployment-ready through environment-based
+frontend/backend URLs, configurable CORS, PostgreSQL migrations, configurable Qdrant URL/API key,
+configurable OpenAI models, temporary upload cleanup, and a successful production frontend build.
+The BGE reranker's first model load is a Phase 13 resource consideration for Render; it is not a
+reason to replace the working local reranker prematurely.

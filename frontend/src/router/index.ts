@@ -47,6 +47,12 @@ const routes: RouteRecordRaw[] = [
     component: EvaluationsPage,
     meta: { requiresAuth: true },
   },
+  {
+    path: '/analytics',
+    name: 'analytics',
+    component: () => import('@/pages/AnalyticsPage.vue'),
+    meta: { requiresAuth: true },
+  },
 ]
 
 export function createAppRouter(

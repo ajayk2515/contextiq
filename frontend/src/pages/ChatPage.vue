@@ -13,6 +13,7 @@ import {
 } from '@/api/conversations'
 import AppHeader from '@/components/AppHeader.vue'
 import { useAuthStore } from '@/stores/auth'
+import { formatIdentifierLabel, formatStrategyLabel } from '@/utils/labels'
 
 interface DisplayMessage extends ConversationMessage {
   query_intelligence?: QueryIntelligenceMetadata | null
@@ -37,24 +38,6 @@ function sourceLabel(message: DisplayMessage, index: number) {
   if (source.page !== null) parts.push(`Page ${source.page}`)
   if (source.section) parts.push(source.section)
   return parts.join(' \u00b7 ')
-}
-
-function routingLabel(value: string) {
-  return value
-    .toLowerCase()
-    .split('_')
-    .map((word) =>
-      word === 'rrf'
-        ? word.toUpperCase()
-        : word === 'rerank'
-          ? 'Reranker'
-          : word.charAt(0).toUpperCase() + word.slice(1),
-    )
-    .join(' ')
-}
-
-function categoryLabel(value: string) {
-  return value === 'FAQ' ? value : routingLabel(value)
 }
 
 function relativeUpdated(value: string) {
@@ -322,15 +305,16 @@ onMounted(async () => {
                   class="mt-2 text-xs text-muted"
                   aria-label="Query routing"
                 >
-                  {{ categoryLabel(message.query_intelligence.category) }}
+                  {{ formatIdentifierLabel(message.query_intelligence.category) }}
                   &middot; {{ message.query_intelligence.profile }} &middot;
-                  {{ routingLabel(message.query_intelligence.executed_strategy) }} &middot; Top
+                  {{ formatStrategyLabel(message.query_intelligence.executed_strategy) }} &middot;
+                  Top
                   {{ message.query_intelligence.candidate_top_k }}
                 </p>
                 <RouterLink
                   v-if="message.query_id"
                   class="mt-2 inline-flex text-xs font-semibold text-accent hover:underline"
-                  :to="{ name: 'inspector', query: { query: message.query_id } }"
+                  :to="{ name: 'inspector', query: { query_id: message.query_id } }"
                 >
                   Inspect retrieval
                 </RouterLink>

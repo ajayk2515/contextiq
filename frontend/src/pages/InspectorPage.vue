@@ -2,7 +2,6 @@
 import { onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 
-import type { ExecutedRetrievalStrategy } from '@/api/chat'
 import { ApiError } from '@/api/client'
 import {
   fetchQueries,
@@ -14,6 +13,7 @@ import {
 } from '@/api/inspector'
 import AppHeader from '@/components/AppHeader.vue'
 import { useAuthStore } from '@/stores/auth'
+import { formatIdentifierLabel, formatStrategyLabel } from '@/utils/labels'
 
 const auth = useAuthStore()
 const route = useRoute()
@@ -24,23 +24,6 @@ const retrieval = ref<RetrievalSnapshot[]>([])
 const loadingList = ref(true)
 const loadingDetail = ref(false)
 const errorMessage = ref('')
-
-function label(value: string) {
-  return value
-    .toLowerCase()
-    .split('_')
-    .map((word) =>
-      word === 'rrf' ? word.toUpperCase() : word.charAt(0).toUpperCase() + word.slice(1),
-    )
-    .join(' ')
-}
-
-function strategyLabel(strategy: ExecutedRetrievalStrategy) {
-  if (strategy === 'HYBRID_RRF_RERANK') return 'Hybrid RRF + Reranker'
-  if (strategy === 'HYBRID_RRF') return 'Hybrid RRF'
-  if (strategy === 'DENSE_FALLBACK') return 'Dense fallback'
-  return 'Dense'
-}
 
 function dateLabel(value: string) {
   return new Intl.DateTimeFormat(undefined, {
@@ -100,7 +83,12 @@ onMounted(async () => {
   if (!auth.token) return
   try {
     queries.value = await fetchQueries(auth.token)
-    const requestedId = typeof route.query.query === 'string' ? route.query.query : null
+    const requestedId =
+      typeof route.query.query_id === 'string'
+        ? route.query.query_id
+        : typeof route.query.query === 'string'
+          ? route.query.query
+          : null
     const initial = queries.value.find((query) => query.id === requestedId) ?? queries.value[0]
     if (initial) await selectQuery(initial.id)
   } catch (error) {
@@ -173,13 +161,15 @@ onMounted(async () => {
                 class="border-b border-line py-4 sm:border-r sm:px-4 sm:first:pl-0 xl:border-b-0"
               >
                 <dt class="text-xs text-muted">Classification</dt>
-                <dd class="mt-1 text-sm font-semibold">{{ label(detail.query_category) }}</dd>
+                <dd class="mt-1 text-sm font-semibold">
+                  {{ formatIdentifierLabel(detail.query_category) }}
+                </dd>
               </div>
               <div class="border-b border-line py-4 sm:px-4 xl:border-r xl:border-b-0">
                 <dt class="text-xs text-muted">Profile and strategy</dt>
                 <dd class="mt-1 text-sm font-semibold">
                   {{ detail.retrieval_profile }} &middot;
-                  {{ strategyLabel(detail.retrieval_strategy) }}
+                  {{ formatStrategyLabel(detail.retrieval_strategy) }}
                 </dd>
               </div>
               <div

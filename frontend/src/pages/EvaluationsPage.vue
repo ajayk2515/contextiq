@@ -216,6 +216,7 @@ onBeforeUnmount(() => {
             <li v-for="run in runs" :key="run.id">
               <button
                 class="w-full border border-line bg-white p-3 text-left hover:border-accent"
+                :class="selected?.id === run.id ? 'border-accent' : ''"
                 type="button"
                 @click="selectRun(run.id)"
               >

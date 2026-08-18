@@ -14,9 +14,13 @@ import { useAuthStore } from '@/stores/auth'
 
 import InspectorPage from './InspectorPage.vue'
 
+const { routeQuery } = vi.hoisted(() => ({
+  routeQuery: {} as Record<string, string>,
+}))
+
 vi.mock('vue-router', async (importOriginal) => {
   const actual = await importOriginal<typeof import('vue-router')>()
-  return { ...actual, useRoute: () => ({ query: {} }) }
+  return { ...actual, useRoute: () => ({ query: routeQuery }) }
 })
 
 vi.mock('@/api/inspector', async (importOriginal) => {
@@ -79,6 +83,7 @@ describe('InspectorPage', () => {
       role: 'Developer',
     }
     vi.clearAllMocks()
+    for (const key of Object.keys(routeQuery)) delete routeQuery[key]
     vi.mocked(fetchQueries).mockResolvedValue([accurateDetail])
     vi.mocked(fetchQuery).mockResolvedValue(accurateDetail)
     vi.mocked(fetchRetrieval).mockResolvedValue([snapshot()])
@@ -172,6 +177,23 @@ describe('InspectorPage', () => {
     expect(fetchQuery).toHaveBeenLastCalledWith('signed-token', 'query-2')
     expect(fetchRetrieval).toHaveBeenLastCalledWith('signed-token', 'query-2')
     expect(wrapper.text()).toContain('Find the travel policy')
+  })
+
+  it('opens the query_id supplied by evaluation and chat links', async () => {
+    const second = {
+      ...accurateDetail,
+      id: 'query-2',
+      query_text: 'Find the travel policy',
+    }
+    routeQuery.query_id = 'query-2'
+    vi.mocked(fetchQueries).mockResolvedValue([accurateDetail, second])
+    vi.mocked(fetchQuery).mockResolvedValue(second)
+
+    mountPage()
+    await flushPromises()
+
+    expect(fetchQuery).toHaveBeenCalledWith('signed-token', 'query-2')
+    expect(fetchRetrieval).toHaveBeenCalledWith('signed-token', 'query-2')
   })
 
   it('renders empty and safe API error states', async () => {

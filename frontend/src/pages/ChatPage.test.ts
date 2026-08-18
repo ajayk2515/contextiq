@@ -175,7 +175,7 @@ describe('ChatPage', () => {
     expect(wrapper.text()).toContain('The policies differ.')
     expect(wrapper.text()).toContain('[1] benefits.md \u00b7 Parental Leave')
     expect(wrapper.text()).toContain(
-      'Multi Doc Comparison \u00b7 ACCURATE \u00b7 Hybrid RRF Reranker \u00b7 Top 15',
+      'Multi Doc Comparison \u00b7 ACCURATE \u00b7 Hybrid RRF + Reranker \u00b7 Top 15',
     )
   })
 

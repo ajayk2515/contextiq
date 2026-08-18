@@ -178,7 +178,9 @@ onBeforeUnmount(() => {
       <section aria-labelledby="library-heading" class="mt-8">
         <div class="mb-3 flex items-center justify-between">
           <h2 id="library-heading" class="text-base font-semibold">Document library</h2>
-          <span v-if="hasProcessing" class="text-xs text-muted">Refreshing processing status</span>
+          <span class="text-xs text-muted">
+            {{ hasProcessing ? 'Refreshing processing status' : 'Only uploaders can delete' }}
+          </span>
         </div>
 
         <div class="overflow-hidden border border-line bg-white">
