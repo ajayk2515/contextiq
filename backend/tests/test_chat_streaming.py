@@ -40,6 +40,7 @@ def prepared(insufficient: bool = False) -> PreparedAnswer:
     return PreparedAnswer(
         question="What is the leave policy?",
         context="[SOURCE 1]\nPolicy",
+        contexts=() if insufficient else ("Policy",),
         sources=[] if insufficient else [source],
         insufficient_context=insufficient,
         query_intelligence=QueryIntelligenceMetadata(

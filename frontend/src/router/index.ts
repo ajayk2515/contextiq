@@ -5,6 +5,7 @@ import ChatPage from '@/pages/ChatPage.vue'
 import FoundationPage from '@/pages/FoundationPage.vue'
 import InspectorPage from '@/pages/InspectorPage.vue'
 import DocumentsPage from '@/pages/DocumentsPage.vue'
+import EvaluationsPage from '@/pages/EvaluationsPage.vue'
 import LoginPage from '@/pages/LoginPage.vue'
 import { pinia } from '@/stores'
 import { useAuthStore } from '@/stores/auth'
@@ -38,6 +39,12 @@ const routes: RouteRecordRaw[] = [
     path: '/inspector',
     name: 'inspector',
     component: InspectorPage,
+    meta: { requiresAuth: true },
+  },
+  {
+    path: '/evaluations',
+    name: 'evaluations',
+    component: EvaluationsPage,
     meta: { requiresAuth: true },
   },
 ]

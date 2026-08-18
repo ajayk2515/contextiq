@@ -29,6 +29,7 @@ logger = logging.getLogger(__name__)
 class PreparedAnswer:
     question: str
     context: str
+    contexts: tuple[str, ...]
     sources: list[ChatSource]
     insufficient_context: bool
     query_intelligence: QueryIntelligenceMetadata
@@ -188,6 +189,7 @@ class RagService:
         return PreparedAnswer(
             question=question,
             context=context,
+            contexts=tuple(chunk.text for chunk in included_chunks),
             sources=[_source(chunk) for chunk in included_chunks],
             insufficient_context=not included_chunks,
             query_intelligence=metadata,
@@ -201,11 +203,18 @@ class RagService:
         history: Sequence[ConversationHistoryMessage] = (),
     ) -> ChatResponse:
         prepared = await self.prepare(question, user_id, role)
+        return await self.complete(prepared, history)
+
+    async def complete(
+        self,
+        prepared: PreparedAnswer,
+        history: Sequence[ConversationHistoryMessage] = (),
+    ) -> ChatResponse:
         if prepared.insufficient_context:
             answer = INSUFFICIENT_CONTEXT_ANSWER
         else:
             try:
-                answer = await self.generator.generate(question, prepared.context, history)
+                answer = await self.generator.generate(prepared.question, prepared.context, history)
             except Exception:
                 logger.exception("Grounded answer generation failed")
                 raise_chat_unavailable(

@@ -522,6 +522,7 @@ async def test_accurate_streaming_uses_shared_reranked_top_five_and_history() ->
         ExecutedRetrievalStrategy.HYBRID_RRF_RERANK
     )
     assert len(prepared.sources) == 5
+    assert prepared.contexts == tuple(candidate.text for candidate in reranked[:5])
     assert tokens == ["Grounded comparison"]
     assert streamed_history == history
     persisted_candidates = snapshot_writer.record.await_args.args[1]

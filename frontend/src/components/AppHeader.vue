@@ -29,12 +29,13 @@ async function signOut() {
 
       <nav
         aria-label="Primary"
-        class="order-3 flex h-11 w-full items-end gap-6 sm:order-2 sm:h-16 sm:w-auto"
+        class="order-3 flex h-11 w-full items-end gap-4 sm:order-2 sm:h-16 sm:w-auto lg:gap-6"
       >
         <RouterLink class="nav-link" :to="{ name: 'foundation' }">Status</RouterLink>
         <RouterLink class="nav-link" :to="{ name: 'chat' }">Chat</RouterLink>
         <RouterLink class="nav-link" :to="{ name: 'documents' }">Documents</RouterLink>
         <RouterLink class="nav-link" :to="{ name: 'inspector' }">Inspector</RouterLink>
+        <RouterLink class="nav-link" :to="{ name: 'evaluations' }">Evaluate</RouterLink>
       </nav>
 
       <div class="order-2 flex items-center gap-4 sm:order-3">

@@ -28,6 +28,8 @@ module = [
     "numpy.*",
     "qdrant_client",
     "qdrant_client.*",
+    "ragas",
+    "ragas.*",
     "tiktoken",
     "tiktoken.*",
 ]

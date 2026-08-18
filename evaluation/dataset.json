@@ -1,0 +1,189 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "id": "faq-annual-leave",
+      "question": "How many paid annual leave days do full-time employees receive?",
+      "expected_answer": "Full-time employees receive 20 days of paid annual leave per calendar year.",
+      "expected_document": "evaluation-employee-handbook.md",
+      "role": "Developer",
+      "category_hint": "FAQ"
+    },
+    {
+      "id": "faq-parental-leave",
+      "question": "How much fully paid parental leave is available?",
+      "expected_answer": "Eligible employees receive 16 weeks of fully paid parental leave.",
+      "expected_document": "evaluation-employee-handbook.md",
+      "role": "HR",
+      "category_hint": "FAQ"
+    },
+    {
+      "id": "faq-remote-work",
+      "question": "How many days per week may employees work remotely?",
+      "expected_answer": "Employees may work remotely up to two days per week with manager approval.",
+      "expected_document": "evaluation-employee-handbook.md",
+      "role": "Finance",
+      "category_hint": "FAQ"
+    },
+    {
+      "id": "faq-learning-budget",
+      "question": "What is the annual employee learning budget?",
+      "expected_answer": "Each employee has an annual learning budget of USD 1,000.",
+      "expected_document": "evaluation-employee-handbook.md",
+      "role": "Developer",
+      "category_hint": "FAQ"
+    },
+    {
+      "id": "specific-hotel-limit",
+      "question": "Under TRV-210, what is the standard nightly hotel reimbursement limit?",
+      "expected_answer": "The standard hotel reimbursement limit is USD 180 per night before taxes.",
+      "expected_document": "evaluation-employee-handbook.md",
+      "role": "Executive",
+      "category_hint": "SPECIFIC_SEARCH"
+    },
+    {
+      "id": "specific-deployment-freeze",
+      "question": "What time does ENG-DEP-204 stop routine Friday production deployments?",
+      "expected_answer": "Routine Friday production deployments stop at 16:00 UTC.",
+      "expected_document": "evaluation-engineering-guide.md",
+      "role": "Developer",
+      "category_hint": "SPECIFIC_SEARCH"
+    },
+    {
+      "id": "faq-incident-ack",
+      "question": "How quickly must a critical production incident be acknowledged?",
+      "expected_answer": "The on-call engineer must acknowledge a critical production incident within 10 minutes.",
+      "expected_document": "evaluation-engineering-guide.md",
+      "role": "Developer",
+      "category_hint": "FAQ"
+    },
+    {
+      "id": "specific-code-review",
+      "question": "When must a stale pull request be reviewed or closed?",
+      "expected_answer": "A stale pull request must be reviewed or closed after five business days.",
+      "expected_document": "evaluation-engineering-guide.md",
+      "role": "Executive",
+      "category_hint": "SPECIFIC_SEARCH"
+    },
+    {
+      "id": "specific-dependency-scan",
+      "question": "How often do application dependency scans run, and when are critical findings triaged?",
+      "expected_answer": "Dependency scans run weekly, and critical findings must be triaged within one business day.",
+      "expected_document": "evaluation-engineering-guide.md",
+      "role": "Developer",
+      "category_hint": "SPECIFIC_SEARCH"
+    },
+    {
+      "id": "faq-expense-receipt",
+      "question": "At what expense amount is an itemized receipt required?",
+      "expected_answer": "An itemized receipt is required for every business expense of USD 25 or more.",
+      "expected_document": "evaluation-finance-policy.md",
+      "role": "Finance",
+      "category_hint": "FAQ"
+    },
+    {
+      "id": "specific-expense-deadline",
+      "question": "How long does an employee have to submit an expense report?",
+      "expected_answer": "An employee must submit an expense report within 15 calendar days of the transaction.",
+      "expected_document": "evaluation-finance-policy.md",
+      "role": "Finance",
+      "category_hint": "SPECIFIC_SEARCH"
+    },
+    {
+      "id": "specific-vendor-approval",
+      "question": "Which approvals are required for a new USD 10,000 vendor commitment?",
+      "expected_answer": "It requires approval from both the requesting department head and Finance before signing.",
+      "expected_document": "evaluation-finance-policy.md",
+      "role": "Executive",
+      "category_hint": "SPECIFIC_SEARCH"
+    },
+    {
+      "id": "faq-forecast-date",
+      "question": "When are monthly department forecasts due?",
+      "expected_answer": "Department forecasts are due by the fifth business day of each month.",
+      "expected_document": "evaluation-finance-policy.md",
+      "role": "Finance",
+      "category_hint": "FAQ"
+    },
+    {
+      "id": "specific-record-retention",
+      "question": "For how many years must invoices and expense records be retained?",
+      "expected_answer": "Invoices and expense records must be retained for seven years from the end of the relevant fiscal year.",
+      "expected_document": "evaluation-finance-policy.md",
+      "role": "Finance",
+      "category_hint": "SPECIFIC_SEARCH"
+    },
+    {
+      "id": "restricted-retention-bonus",
+      "question": "What target retention bonus percentage is defined for designated critical roles?",
+      "expected_answer": "The target retention bonus is 12 percent of base salary for designated critical roles.",
+      "expected_document": "evaluation-hr-confidential.md",
+      "role": "HR",
+      "category_hint": "RESTRICTED_DATA"
+    },
+    {
+      "id": "restricted-salary-review",
+      "question": "When does the confidential annual salary review cycle begin?",
+      "expected_answer": "The annual salary review cycle begins in March.",
+      "expected_document": "evaluation-hr-confidential.md",
+      "role": "Executive",
+      "category_hint": "RESTRICTED_DATA"
+    },
+    {
+      "id": "restricted-attrition-target",
+      "question": "What is the 2027 voluntary attrition planning target?",
+      "expected_answer": "The 2027 voluntary attrition planning target is below 9 percent.",
+      "expected_document": "evaluation-hr-confidential.md",
+      "role": "HR",
+      "category_hint": "RESTRICTED_DATA"
+    },
+    {
+      "id": "summary-strategy",
+      "question": "Summarize Northstar's three strategic priorities for 2027.",
+      "expected_answer": "The priorities are improving platform reliability, expanding into Canada and Germany, and increasing operating efficiency.",
+      "expected_document": "evaluation-executive-strategy.md",
+      "role": "Executive",
+      "category_hint": "SUMMARIZATION"
+    },
+    {
+      "id": "faq-margin-target",
+      "question": "What operating margin does Northstar target by the fourth quarter of 2027?",
+      "expected_answer": "Northstar targets an 18 percent operating margin by the fourth quarter of 2027.",
+      "expected_document": "evaluation-executive-strategy.md",
+      "role": "Executive",
+      "category_hint": "FAQ"
+    },
+    {
+      "id": "compare-expansion-sequence",
+      "question": "Compare the sequence of the Canada and Germany expansion programs.",
+      "expected_answer": "Canada is the first expansion market, and its launch readiness review occurs before the Germany localization program begins.",
+      "expected_document": "evaluation-executive-strategy.md",
+      "role": "Executive",
+      "category_hint": "MULTI_DOC_COMPARISON"
+    },
+    {
+      "id": "compare-policy-deadlines",
+      "question": "Compare the response deadlines for a critical engineering incident and a business expense report.",
+      "expected_answer": "A critical engineering incident must be acknowledged within 10 minutes, while an expense report must be submitted within 15 calendar days of the transaction.",
+      "expected_document": "evaluation-engineering-guide.md",
+      "role": "Executive",
+      "category_hint": "MULTI_DOC_COMPARISON"
+    },
+    {
+      "id": "compare-spending-thresholds",
+      "question": "Compare the employee learning budget with the vendor commitment threshold that requires dual approval.",
+      "expected_answer": "The annual employee learning budget is USD 1,000, while a new vendor commitment of USD 10,000 or more requires department-head and Finance approval.",
+      "expected_document": "evaluation-employee-handbook.md",
+      "role": "Executive",
+      "category_hint": "MULTI_DOC_COMPARISON"
+    },
+    {
+      "id": "summary-finance-controls",
+      "question": "Summarize the expense, vendor approval, forecast, and record-retention controls in the finance policy.",
+      "expected_answer": "Receipts are required at USD 25, expense reports are due within 15 days, vendor commitments of USD 10,000 or more need department-head and Finance approval, forecasts are due by the fifth business day, and specified records are retained for seven years.",
+      "expected_document": "evaluation-finance-policy.md",
+      "role": "Finance",
+      "category_hint": "SUMMARIZATION"
+    }
+  ]
+}

@@ -2,7 +2,7 @@
 
 Enterprise Knowledge Intelligence Platform (EKIP) is a full-stack AI/RAG MVP. The application is being built phase by phase according to [`PROJECT_SPEC.md`](PROJECT_SPEC.md).
 
-The current implementation provides the local Vue, FastAPI, PostgreSQL, and Qdrant foundation, email/password authentication for the four demo roles, role-aware document ingestion, grounded adaptive retrieval, SSE answer streaming, persistent conversations, and a historical Retrieval Inspector.
+The current implementation provides the local Vue, FastAPI, PostgreSQL, and Qdrant foundation, email/password authentication for the four demo roles, role-aware document ingestion, grounded adaptive retrieval, SSE answer streaming, persistent conversations, a historical Retrieval Inspector, and explicit RAGAS evaluation runs over a checked-in synthetic corpus.
 
 ## Prerequisites
 
@@ -21,6 +21,10 @@ Copy-Item .env.example .env
 The defaults are intended only for local development. Change credentials and service URLs through environment variables rather than editing application code.
 
 Document ingestion and chat require `OPENAI_API_KEY`. Upload limits, chunk size and overlap, embedding, chat, and reranker models, retrieval score threshold, context size, answer size, conversation-history message limit, and the Qdrant collection name are configurable in `.env`. Retrieval Top-K values are centralized in the FAST, BALANCED, and ACCURATE profile definitions.
+
+RAGAS evaluation uses `RAGAS_LLM_MODEL` as its judge and
+`RAGAS_EMBEDDING_MODEL` for answer relevancy. Evaluation makes multiple OpenAI
+requests per case and is run only when an authenticated user explicitly starts it.
 
 ## Local Infrastructure
 
@@ -100,6 +104,39 @@ GET /api/queries/{query_id}/retrieval
 Every endpoint resolves ownership from the validated JWT and returns the same safe not-found response for missing and other-user query IDs. Snapshot persistence is deliberately observational: a database failure is logged without blocking an otherwise successful grounded answer.
 
 The first ACCURATE query downloads the CPU-compatible FastEmbed BGE reranker model into the local model cache. Later requests reuse the same process-wide model instance.
+
+## RAGAS Evaluation
+
+Apply the latest migration, then seed the versioned synthetic evaluation corpus through
+the normal document-ingestion pipeline:
+
+```powershell
+cd backend
+python -m alembic upgrade head
+python -m scripts.seed_evaluation_data
+```
+
+The seed command is idempotent and leaves five checked-in Markdown policies indexed
+with their intended role metadata. It also ensures the four demo identities exist.
+The source documents and 23-case dataset are under `evaluation/`.
+
+Open `http://localhost:5173/evaluations` to run either the representative five-case
+set or all 20 cases. The authenticated API endpoints are:
+
+```text
+POST /api/evaluations/run
+GET  /api/evaluations
+GET  /api/evaluations/{run_id}
+```
+
+`POST /api/evaluations/run` accepts an optional JSON `case_ids` list; it never accepts
+a local file path. A background task runs every case through the existing classifier,
+role-filtered retrieval, optional hybrid fusion/reranking, and grounded generation
+pipeline without creating conversations. The exact final chunk texts used for answer
+generation are passed to RAGAS 0.4 collection metrics for Faithfulness, Answer
+Relevancy, Context Precision, and Context Recall. Runs, progress, per-case results,
+nullable metric failures, and the original Retrieval Inspector `query_id` are persisted
+in PostgreSQL.
 
 ## Demo Authentication
 
