@@ -56,6 +56,14 @@ async def test_qdrant_points_contain_dense_sparse_and_rbac_payload() -> None:
     )
 
     client.create_collection.assert_awaited_once()
+    assert client.create_payload_index.await_args_list[1].args == (
+        settings().qdrant_documents_collection,
+        "allowed_roles[]",
+    )
+    assert (
+        client.create_payload_index.await_args_list[1].kwargs["field_schema"]
+        == models.PayloadSchemaType.KEYWORD
+    )
     call = client.upsert.await_args.kwargs
     points = call["points"]
     point = points[0]
@@ -74,6 +82,28 @@ async def test_qdrant_points_contain_dense_sparse_and_rbac_payload() -> None:
     }
     assert len(points) == 2
     assert all(indexed.payload["allowed_roles"] == ["HR", "Executive"] for indexed in points)
+
+
+async def test_existing_collection_still_ensures_payload_indexes() -> None:
+    client = AsyncMock()
+    client.collection_exists.return_value = True
+    index = DocumentVectorIndex(settings(), client)
+
+    await index.ensure_collection()
+    await index.ensure_collection()
+
+    client.create_collection.assert_not_awaited()
+    assert client.create_payload_index.await_count == 4
+    assert [call.args[1] for call in client.create_payload_index.await_args_list] == [
+        "document_id",
+        "allowed_roles[]",
+        "document_id",
+        "allowed_roles[]",
+    ]
+    assert all(
+        call.kwargs["field_schema"] == models.PayloadSchemaType.KEYWORD
+        for call in client.create_payload_index.await_args_list
+    )
 
 
 async def test_document_cleanup_uses_document_id_filter() -> None:

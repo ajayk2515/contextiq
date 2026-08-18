@@ -27,25 +27,26 @@ class DocumentVectorIndex:
 
     async def ensure_collection(self) -> None:
         name = self.settings.qdrant_documents_collection
-        if await self.client.collection_exists(name):
-            return
-        await self.client.create_collection(
-            collection_name=name,
-            vectors_config={
-                "dense": models.VectorParams(
-                    size=self.settings.openai_embedding_dimensions,
-                    distance=models.Distance.COSINE,
-                )
-            },
-            sparse_vectors_config={
-                "sparse": models.SparseVectorParams(index=models.SparseIndexParams(on_disk=False))
-            },
-        )
+        if not await self.client.collection_exists(name):
+            await self.client.create_collection(
+                collection_name=name,
+                vectors_config={
+                    "dense": models.VectorParams(
+                        size=self.settings.openai_embedding_dimensions,
+                        distance=models.Distance.COSINE,
+                    )
+                },
+                sparse_vectors_config={
+                    "sparse": models.SparseVectorParams(
+                        index=models.SparseIndexParams(on_disk=False)
+                    )
+                },
+            )
         await self.client.create_payload_index(
             name, "document_id", field_schema=models.PayloadSchemaType.KEYWORD
         )
         await self.client.create_payload_index(
-            name, "allowed_roles", field_schema=models.PayloadSchemaType.KEYWORD
+            name, "allowed_roles[]", field_schema=models.PayloadSchemaType.KEYWORD
         )
 
     def document_filter(self, document_id: UUID) -> models.Filter:
