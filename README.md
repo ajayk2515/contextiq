@@ -11,10 +11,11 @@ citations. It is designed around a difficult enterprise requirement: retrieval q
 without allowing restricted content to enter the candidate set, prompt, answer, citation, logs, or
 analytics.
 
-This repository contains a complete local MVP through Phase 12 of
+This repository contains a complete MVP through Phase 13 of
 [`PROJECT_SPEC.md`](PROJECT_SPEC.md). The application runs locally with Vue 3, FastAPI, PostgreSQL,
-Qdrant, OpenAI, Docling, FastEmbed, a local MiniLM reranker, and RAGAS. Cloud deployment is explicitly
-reserved for Phase 13 and has not been configured.
+Qdrant, OpenAI, Docling, FastEmbed, a local MiniLM reranker, and RAGAS. See the
+[Oracle Cloud deployment guide](docs/deployment-oracle.md) for the prepared ARM64 backend release
+workflow; the guide does not provision or deploy infrastructure.
 
 ## At A Glance
 
